@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.1.1-2B (in progress)
+
+- **Menu and billboard videos on Linux and Steam Deck.** The main menu's background video and the nine Urban Warfare
+  billboard screens now use the VP8/WebM video format instead of H.264, which Proton plays as colour bars. Under
+  Proton the main-menu video now plays. The opening cinematic uses a different format and already played under
+  Proton. Windows players get the same clips; they are encoded at the originals' size and quality, so the install
+  does not grow.
+- **Russian text.** With the game set to Russian, menus showed a box for every Cyrillic letter, because the Russian
+  fonts the game switches to were missing. Retail's five Russian fonts are back, so Russian menus and popups read
+  properly again.
+- **BattleTech Advanced: ship menus after loading a save** ([issue #3](https://github.com/InternetDadCo/BattleTech-UCU/issues/3)). With BTA linked, some saves arrived on the ship with the
+  menu buttons doing nothing. A mod BTA uses loads pilot portraits in a way the 2018 engine allowed and the new one
+  refuses, so those portraits never loaded and the ship screens stopped setting up. The mod loader now lets those
+  portraits load, and the menus work. Installing this version updates the loader; BTA does not need linking again.
+
 ## 2.1.0-2B (BT-UCU Beta 2)
 
 Changes in version **2.1.0-2B** of the BattleTech: Unofficial Community Update (UCU)

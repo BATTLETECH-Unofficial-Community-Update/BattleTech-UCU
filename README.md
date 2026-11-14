@@ -14,11 +14,11 @@ This project is a personal, non-commercial effort and is not affiliated with Par
 
 **BUGS**: Use the Issues link on this repository.
 
-**FEEDBACK/DISCUSSION**: We have a discord at https://discord.gg/tbmrmQzpvd -- please be patient!
+**FEEDBACK/DISCUSSION**: We have a discord at https://discord.gg/tbmrmQzpvd 
 
 ## Current Release
 
-**Version 2.1.0-2B**. Version definitions have to stick to the numbering system retail used, which is a little complicated:
+**Version 2.1.1-2B**. Version definitions have to stick to the numbering system retail used, which is a little complicated:
 
 - **2**: Major release: 2.0 is defined as Unity 6-built feature parity with retail and its DLC along with bugfixes, optimizations, and the multiplayer changes below.
 - **1**: Minor release with new features or requirements, non-breaking changes backwards compatible within the major release line.
@@ -29,7 +29,7 @@ The initial 2.0.0A line represented the development cycle from April 2026 to Nov
 
 ## Linux and MacOS
 
-Linux (Proton) is ready for testing in 2.1.0-2B. On one Linux PC, the Beta 1 package installed, passed the ownership check and reached the main menu under Proton; nobody has played past the main menu on Linux yet, or tried a Steam Deck. The main menu's background video shows colour bars under Proton until 2.1.1-2B (see Known issues). If you try it on Linux or a Steam Deck, please tell us how it went through the Issues link, whether it worked or not. Native Linux is more work but theoretically possible.
+Linux (Proton) is ready for testing. On one Linux PC, the Beta 1 package installed, passed the ownership check and reached the main menu under Proton; nobody has played past the main menu on Linux yet, or tried a Steam Deck. From 2.1.1-2B the main menu's background video plays under Proton instead of showing colour bars (see Known issues). If you try it on Linux or a Steam Deck, please tell us how it went through the Issues link, whether it worked or not. Native Linux is more work but theoretically possible.
 
 MacOS is harder as I have no Mac hardware available for it. This will depend on somebody in the community who does coming on board, or my getting access to a gaming Mac.
 
@@ -86,7 +86,7 @@ At the same time, my son was getting into the 2018 Battletech game, and he wante
 
 ### A note on AI
 
-The below is a brief statement about AI usage in this project. For more detail, see our [Note on AI](NOTE-ON-AI.md) and if you have specific questions, we will address them there.
+The below is a brief statement about AI usage in this project. For more detail, see our [Note on AI](NOTE-ON-AI.md) and if you have specific questions, we will address them there in future revisions.
 
 ![AI involvement: Code only. Art assets, creative writing, music and audio, and video are not marked.](docs/ai-involvement.svg)
 
@@ -117,7 +117,7 @@ Places where the port means to match retail but doesn't quite yet. Deliberate ch
 - **Martian maps** look less red and less saturated than retail's, and their rocks show more contrast. This was measured at different times of day and isn't confirmed yet.
 - **Most maps** haven't been compared with retail side by side under the same weather, and decals have been measured only on Central Mountain and Still Valley.
 - **Portraits** read slightly darker than retail, mostly on the shaded side of the face, and one preset's hair tips look cyan.
-- **Linux and Steam Deck (Proton):** In 2.1.0-2B, the main menu's animated background shows colour bars (vertical stripes) instead of the video, because Proton can't play that video format. The menu works on top of it, and the opening cinematic and story cutscenes use a different format that plays. The small video screens on some Urban Warfare city maps will probably show colour bars too. Proton has only been tested as far as the main menu, on one Linux PC and not on a Steam Deck, and the game needs a working sound system (PulseAudio or PipeWire, which desktops and SteamOS have) or it closes at start-up. The videos are already converted to a format Proton plays; that fix comes in 2.1.1-2B.
+- **Linux and Steam Deck (Proton):** Up to 2.1.0-2B, the main menu's animated background showed colour bars (vertical stripes) under Proton, because Proton can't play that video format. 2.1.1-2B converts the menu background and the small video screens on Urban Warfare city maps to a format Proton plays; on one Linux PC the menu video played under Proton, but the Urban Warfare screens have only been checked on Windows. The opening cinematic uses a different video format and plays; the story cutscenes use that same format, so they should play too, but they haven't been checked yet. Proton has only been tested as far as the main menu, on one Linux PC and not on a Steam Deck, and the game needs a working sound system (PulseAudio or PipeWire, which desktops and SteamOS have) or it closes at start-up.
 
 ## Visuals and lighting
 

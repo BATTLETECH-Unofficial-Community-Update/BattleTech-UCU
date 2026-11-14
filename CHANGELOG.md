@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.1.1-2B (in progress)
+## 2.1.1-2B
 
 - **Menu and billboard videos on Linux and Steam Deck.** The main menu's background video and the nine Urban Warfare
   billboard screens now use the VP8/WebM video format instead of H.264, which Proton plays as colour bars. Under

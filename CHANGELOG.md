@@ -1,14 +1,14 @@
 # Changelog
 
-## 2.1.0-2B
+## 2.1.0-2B (BT-UCU Beta 2)
 
-Changes in version **2.1.0-2B** of the BattleTech: Unofficial Community Update (UCU), its second Beta build, on top of 2.0.0-1B.
+Changes in version **2.1.0-2B** of the BattleTech: Unofficial Community Update (UCU)
 
-- **Mod support is built in.** The installer has a *Mod support* box, ticked by default, that puts the ModTek loader
+- **Mod support is built in more explicitly.** The installer has a *Mod support* box, ticked by default, that puts the ModTek loader
   beside `BattleTech.exe`. Put ModTek and your mods in a `Mods` folder there and they load; with no `Mods` folder the
   game starts as before. The loader's files also come in the install's `ModSupport` folder, with Doorstop's license.
 - **BattleTech Advanced.** BTA's own installer needs retail BattleTech, so `Link BTA.cmd`, in the install's `ModSupport` folder, copies the mods and saves from
-  a BTA install you already have.
+  a BTA install you already have. This is a helper -- it's not required and you can manually move everything over.
 - **Memory in long sessions.** We've taken a first pass at the famous 'memory leak'. One cause was that, when a battle ended, the game kept that whole battle in memory,
   including its map's terrain and encounter grids, because a few shared objects (lance and spawn-point references,
   and the battle's dialogue and conversations) still pointed back at it. Each different contract you played added

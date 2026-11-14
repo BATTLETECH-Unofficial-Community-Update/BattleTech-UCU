@@ -29,7 +29,7 @@ The initial 2.0.0A line represented the development cycle from April 2026 to Nov
 
 ## Linux and MacOS
 
-Beta 1 is Windows-only. We are aiming for Linux support (Proton) for Beta 2 - this is currently under investigation. Native Linux is more work but theoretically possible.
+Linux (Proton) is ready for testing in 2.1.0-2B. On one Linux PC, the Beta 1 package installed, passed the ownership check and reached the main menu under Proton; nobody has played past the main menu on Linux yet, or tried a Steam Deck. The main menu's background video shows colour bars under Proton until 2.1.1-2B (see Known issues). If you try it on Linux or a Steam Deck, please tell us how it went through the Issues link, whether it worked or not. Native Linux is more work but theoretically possible.
 
 MacOS is harder as I have no Mac hardware available for it. This will depend on somebody in the community who does coming on board, or my getting access to a gaming Mac.
 

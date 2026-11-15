@@ -6,7 +6,7 @@
 param([string]$Deploy)
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
-$sdkVersion = '10.0.403'   # keep equal to dotnet-version in ci/installer.yml
+$sdkVersion = '10.0.404'   # keep equal to dotnet-version in ci/installer.yml
 $sdk = (& dotnet --list-sdks | Where-Object { $_ -like "$sdkVersion *" } | Select-Object -First 1) -replace '^(\S+) \[(.*)\]$', '$2\$1'
 if (-not $sdk) { throw ".NET SDK $sdkVersion is needed (dotnet --list-sdks): install that exact version." }
 $csc = Join-Path $sdk 'Roslyn\bincore\csc.dll'
@@ -23,6 +23,10 @@ if ($LASTEXITCODE -ne 0) { throw 'csc failed for ReleasePack' }
 if ($LASTEXITCODE -ne 0) { throw 'csc failed for BattleTechUCUSetup' }
 & dotnet $csc @common -target:winexe "-win32manifest:$src\app.manifest" '-main:ReleaseGate.ManagerProgram' "-out:$bin\ReleaseManager.exe" -define:MANAGER @refs "-r:$fx\System.Web.Extensions.dll" "$src\AssemblyInfo.cs" "$src\GateCore.cs" "$src\PublicManifest.cs" "$src\Pack.cs" "$src\Volumes.cs" "$src\Remote.cs" "$src\Unlock.cs" "$src\SteamTicket.cs" "$src\Installer.cs" "$src\GitHubReleases.cs" "$src\ReleaseManager.cs"
 if ($LASTEXITCODE -ne 0) { throw 'csc failed for ReleaseManager' }
+# ReleasePublish.exe: the manager's GitHub steps from a command line (src/PublishCli.cs). Not deployed by -Deploy;
+# it takes the installer and verify.ps1 as arguments.
+& dotnet $csc @common -target:exe '-main:ReleaseGate.PublishCli' "-out:$bin\ReleasePublish.exe" -define:MANAGER @refs "-r:$fx\System.Web.Extensions.dll" "$src\AssemblyInfo.cs" "$src\GateCore.cs" "$src\PublicManifest.cs" "$src\Pack.cs" "$src\Volumes.cs" "$src\Remote.cs" "$src\Unlock.cs" "$src\SteamTicket.cs" "$src\Installer.cs" "$src\GitHubReleases.cs" "$src\ReleaseManager.cs" "$src\PublishCli.cs"
+if ($LASTEXITCODE -ne 0) { throw 'csc failed for ReleasePublish' }
 Get-ChildItem $bin -Filter *.exe | ForEach-Object { "$($_.Name) $($_.Length)" }
 if ($Deploy) {
     New-Item -ItemType Directory -Force $Deploy | Out-Null

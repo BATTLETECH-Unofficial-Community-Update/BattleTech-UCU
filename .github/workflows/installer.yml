@@ -1,6 +1,6 @@
 # Builds the installer and release tools from installer/ and attests them, so anyone can check that a release's
 # BattleTechUCUSetup.exe came from this repository:
-#   gh attestation verify BattleTechUCUSetup.exe -R InternetDadCo/BattleTech-UCU
+#   gh attestation verify BattleTechUCUSetup.exe -R BATTLETECH-Unofficial-Community-Update/BattleTech-UCU
 # The build is reproducible (installer/build.ps1): the same commit gives the same bytes on any Windows machine with the
 # pinned .NET SDK, so a maintainer's local build of a tagged commit carries this run's attestation too.
 # Source of truth: tools/release-gate/ci/installer.yml in the development repository, copied here by publish-source.ps1.
@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.403'   # keep equal to $sdkVersion in installer/build.ps1
+          dotnet-version: '10.0.404'   # keep equal to $sdkVersion in installer/build.ps1
       - name: Build
         shell: powershell
         run: |

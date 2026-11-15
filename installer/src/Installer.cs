@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
@@ -362,7 +363,7 @@ namespace ReleaseGate
             long free = new DriveInfo(root).AvailableFreeSpace;
             if (free < space + Headroom)
                 return string.Format("{0:F1} GiB {1}needed on {2}, {3:F1} GiB free.", (space + Headroom) / 1073741824.0,
-                    space < c.Need ? "more " : "", root, free / 1073741824.0);
+                    space < FreshSpace(c, full) ? "more " : "", root, free / 1073741824.0);
             return null;
         }
 
@@ -422,16 +423,141 @@ namespace ReleaseGate
             return old.TryGetValue(e.Path, out had) && had[1] == e.Sha256 && File.Exists(target) && Stamp(target, e.Sha256).SequenceEqual(had);
         }
 
+        // Retail files: on the same NTFS drive the install hard-links the large binary ones to the player's own retail files
+        // instead of copying them, about 10.8 GiB of 34. A link is the same file under a second name: it takes no space,
+        // survives retail being removed, and a delete-and-replace on either side only separates the two. A write in place
+        // would reach the other side, so only an allow-list is linked: asset types nobody edits by hand (asset bundles, map
+        // .bin data, video, sound banks, Unity asset files), each 1 MiB or more. Code, and text and data files a player
+        // might edit (JSON, CSV and the like), are always copied (the maintainer, 2026-11-15: "Copy them"). The MDD database, which
+        // the game rewrites in place, is outside the list.
+        static readonly string[] LinkExtensions = { ".bin", ".bk2", ".bnk", ".assets", ".ress", ".resource" };
+        const string AssetBundles = "BattleTech_Data/StreamingAssets/data/assetbundles/";
+        const long LinkFloor = 1L << 20;
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        static extern bool CreateHardLink(string fileName, string existingFileName, IntPtr securityAttributes);
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        static extern bool GetVolumePathName(string fileName, System.Text.StringBuilder volumePath, int length);
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct FileInfoByHandle
+        {
+            public uint Attributes;
+            public long Created, Accessed, Written;
+            public uint VolumeSerial, SizeHigh, SizeLow, Links, IndexHigh, IndexLow;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool GetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle file, out FileInfoByHandle info);
+
+        static bool Linkable(Entry e)
+        {
+            if (e.RetailPath.Length == 0 || e.Size < LinkFloor) return false;
+            string p = e.Path.Replace('\\', '/');
+            string ext = Path.GetExtension(p).ToLowerInvariant();
+            if (ext.Length == 0) return p.StartsWith(AssetBundles, StringComparison.OrdinalIgnoreCase);
+            return LinkExtensions.Contains(ext);
+        }
+
+        static string Volume(string path)
+        {
+            string p = Path.GetFullPath(path);
+            while (!Directory.Exists(p) && !File.Exists(p))
+            {
+                string up = Path.GetDirectoryName(p);
+                if (up == null || up == p) return null;
+                p = up;
+            }
+            var sb = new System.Text.StringBuilder(1024);
+            return GetVolumePathName(p, sb, sb.Capacity) ? sb.ToString().TrimEnd('\\').ToUpperInvariant() : null;
+        }
+
+        /// <summary>True when the install folder and the retail folder are on the same NTFS (or ReFS) volume.</summary>
+        public static bool CanLink(string retail, string dest)
+        {
+            try
+            {
+                string a = Volume(retail), b = Volume(dest);
+                if (a == null || a != b) return false;
+                string format = new DriveInfo(a + "\\").DriveFormat;
+                return format == "NTFS" || format == "ReFS";
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is ArgumentException || e is NotSupportedException)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>Volume serial and file index; equal for two names of one file.</summary>
+        static string FileId(string path)
+        {
+            try
+            {
+                using (var f = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    FileInfoByHandle i;
+                    return GetFileInformationByHandle(f.SafeFileHandle, out i) ? i.VolumeSerial + ":" + i.IndexHigh + ":" + i.IndexLow : null;
+                }
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { return null; }
+        }
+
+        static bool SameFile(string a, string b)
+        {
+            string x = FileId(a);
+            return x != null && x == FileId(b);
+        }
+
+        static string Size(long bytes)
+        {
+            return bytes < (1L << 30) ? string.Format("{0:F1} MiB", bytes / 1048576.0) : string.Format("{0:F2} GiB", bytes / 1073741824.0);
+        }
+
+        /// <summary>Disk space a new install into dest takes: the whole game, less the files that become links.</summary>
+        public static long FreshSpace(RetailCheck c, string dest)
+        {
+            return c.Need - (CanLink(c.Folder, dest) ? c.Entries.Where(Linkable).Sum(e => e.Size) : 0);
+        }
+
+        /// <summary>The sentence the form and the command line show about linking for this destination.</summary>
+        public static string LinkNote(RetailCheck c, string dest)
+        {
+            long bytes = c.Entries.Where(Linkable).Sum(e => e.Size);
+            if (bytes == 0) return "";
+            string gib = Size(bytes);
+            return CanLink(c.Folder, dest)
+                ? gib + " of BATTLETECH's own files will be links to your BATTLETECH install and take no extra space."
+                : "This folder isn't on the same NTFS drive as BATTLETECH, so " + gib + " of BATTLETECH's own files will be copied. " +
+                  "Install on " + Path.GetPathRoot(Path.GetFullPath(c.Folder)) + " to link them instead.";
+        }
+
         /// <summary>What an install into dest would write, and which blobs it would download first.</summary>
         public sealed class Plan
         {
             public int Files;           // files to write
             public long WriteBytes;
+            public int Link;            // of Files, how many become hard links to retail
             public int Same;            // files already up to date
             public int Remove;          // files an earlier version installed that this one doesn't have
             public readonly List<string> Fetch = new List<string>();
             public long FetchBytes;     // bytes still to download (blobs a stopped run already saved don't count)
             public long Space;          // more disk space the install needs than dest already holds for it
+        }
+
+        /// <summary>
+        /// A current file in the wrong form. One that should be a link but is a copy (an install made before linking) is
+        /// replaced by a link, which gives its space back; a retail file that has gone away keeps the copy. One that is a link
+        /// but should be a copy (linked by the first linking version, before the allow-list) is replaced by a copy, so an edit
+        /// in UCU's folder never reaches retail. Only checked on retail's volume, where links can exist.
+        /// </summary>
+        static bool NeedsRelink(string retail, string dest, Entry e, bool sameVolume, bool linked)
+        {
+            if (!sameVolume || e.RetailPath.Length == 0) return false;
+            string src = Path.Combine(retail, e.RetailPath);
+            if (!File.Exists(src)) return false;
+            bool isLink = SameFile(Path.Combine(dest, e.Path), src);
+            return linked ? !isLink : isLink;
         }
 
         static long Length(string path)
@@ -452,12 +578,15 @@ namespace ReleaseGate
             Dictionary<string, string[]> old = ReadRecord(dest);
             var fetch = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             string downloads = Path.Combine(dest, DownloadName);
+            bool link = CanLink(c.Folder, dest);
             foreach (Entry e in c.Entries)
             {
-                if (IsCurrent(dest, old, e)) { plan.Same++; continue; }
+                bool linked = link && Linkable(e);
+                if (IsCurrent(dest, old, e) && !NeedsRelink(c.Folder, dest, e, link, linked)) { plan.Same++; continue; }
                 plan.Files++;
                 plan.WriteBytes += e.Size;
                 string target = Path.Combine(dest, e.Path);
+                if (linked) { plan.Link++; continue; }
                 plan.Space += Math.Max(0, e.Size - Length(target) - Length(target + ".part"));
                 if (_remote == null || e.RetailPath.Length > 0 || HasLocalBlob(e.Blob) || !fetch.Add(e.Blob)) continue;
                 plan.Fetch.Add(e.Blob);
@@ -558,7 +687,9 @@ namespace ReleaseGate
             Directory.CreateDirectory(dest);
             Dictionary<string, string[]> old = ReadRecord(dest);
             var now = new ConcurrentDictionary<string, string[]>(old, StringComparer.OrdinalIgnoreCase);
-            int same = 0;
+            int same = 0, linkedFiles = 0;
+            long linkedBytes = 0, copiedRetail = 0;
+            bool link = CanLink(retail, dest);
             string text = null;
             InstallResult result;
             try
@@ -580,7 +711,8 @@ namespace ReleaseGate
                     Parallel.ForEach(c.Entries.OrderByDescending(e => e.Size), new ParallelOptions { MaxDegreeOfParallelism = 4, CancellationToken = stop }, e =>
                     {
                         string target = Path.Combine(dest, e.Path);
-                        if (IsCurrent(dest, old, e))
+                        bool linked = link && Linkable(e);
+                        if (IsCurrent(dest, old, e) && !NeedsRelink(retail, dest, e, link, linked))
                         {
                             Interlocked.Add(ref progress.Done, e.Size);
                             Interlocked.Increment(ref same);
@@ -591,11 +723,38 @@ namespace ReleaseGate
                         Directory.CreateDirectory(Path.GetDirectoryName(target));
                         string part = target + ".part";
                         bool ok;
+                        // A .part a killed run left may be a hard link to retail: writing into it would truncate retail's
+                        // file, so it is always deleted (which only removes that name) before anything is written.
+                        if (File.Exists(part)) File.Delete(part);
                         try
                         {
                             string src = e.RetailPath.Length > 0 ? Path.Combine(retail, e.RetailPath) : null;
                             string sha512 = c.Manifest == null ? null : c.Manifest[e.Path].Sha512;
-                            ok = src != null ? File.Exists(src) && Copy(src, part, e.Sha256, sha512, progress, stop) : Open(part, key, e, sha512, progress, stop);
+                            // A read-only retail file is copied: a link shares its attributes, and a later update couldn't delete it.
+                            if (src != null && linked && File.Exists(src) && (File.GetAttributes(src) & FileAttributes.ReadOnly) == 0)
+                            {
+                                ok = Verify(src, e.Sha256, sha512, progress, stop);
+                                if (ok)
+                                {
+                                    if (CreateHardLink(part, src, IntPtr.Zero))
+                                    {
+                                        Interlocked.Increment(ref linkedFiles);
+                                        Interlocked.Add(ref linkedBytes, e.Size);
+                                    }
+                                    else
+                                    {
+                                        Interlocked.Add(ref progress.Done, -e.Size);
+                                        ok = Copy(src, part, e.Sha256, sha512, progress, stop);
+                                        if (ok) Interlocked.Add(ref copiedRetail, e.Size);
+                                    }
+                                }
+                            }
+                            else if (src != null)
+                            {
+                                ok = File.Exists(src) && Copy(src, part, e.Sha256, sha512, progress, stop);
+                                if (ok) Interlocked.Add(ref copiedRetail, e.Size);
+                            }
+                            else ok = Open(part, key, e, sha512, progress, stop);
                         }
                         catch (OperationCanceledException)
                         {
@@ -661,6 +820,12 @@ namespace ReleaseGate
                 text = string.Format("Installed {0} files, {1:F2} GiB.", c.Entries.Count, c.Need / 1073741824.0);
                 if (same > 0 || removed > 0)
                     text += string.Format(" {0} were already up to date; {1} old file(s) removed.", same, removed);
+                if (linkedFiles > 0)
+                    text += string.Format(" {0} files ({1}) are links to your BATTLETECH files and take no extra space.", linkedFiles, Size(linkedBytes));
+                if (copiedRetail > 0)
+                    text += link
+                        ? string.Format(" {0} of BATTLETECH's files (code, text and data files, and small files) were copied, so editing them never changes BATTLETECH.", Size(copiedRetail))
+                        : string.Format(" This folder isn't on the same NTFS drive as BATTLETECH, so {0} of BATTLETECH's files were copied.", Size(copiedRetail));
                 if (c.ManifestBytes != null)
                     text += " Files written match the public manifest, SHA-256 " + c.ManifestSha256 + ".";
                 return InstallResult.Installed;
@@ -698,6 +863,20 @@ namespace ReleaseGate
                 using (var i = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20, FileOptions.SequentialScan))
                 using (var o = new FileStream(dst, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 20))
                 using (var w = Hashed(o, wide))
+                using (var h = new CryptoStream(w, hash, CryptoStreamMode.Write))
+                    Pump(i, h, progress, stop);
+                return Gate.Hex(hash.Hash) == sha && Matches512(wide, sha512);
+            }
+        }
+
+        /// <summary>Reads a retail file through both hashes without writing anything; the check before linking it.</summary>
+        static bool Verify(string src, string sha, string sha512, InstallProgress progress, CancellationToken stop)
+        {
+            using (var hash = Gate.NewSha())
+            using (HashAlgorithm wide = sha512 == null ? null : new SHA512Cng())
+            {
+                using (var i = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20, FileOptions.SequentialScan))
+                using (var w = Hashed(Stream.Null, wide))
                 using (var h = new CryptoStream(w, hash, CryptoStreamMode.Write))
                     Pump(i, h, progress, stop);
                 return Gate.Hex(hash.Hash) == sha && Matches512(wide, sha512);

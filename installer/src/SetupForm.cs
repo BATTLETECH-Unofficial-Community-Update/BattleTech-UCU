@@ -292,9 +292,15 @@ namespace ReleaseGate
                 Show(_destNote, "Checking what to download...", SystemColors.ControlText);
                 _planSettle.Start();
             }
-            else if (space < _check.Need)
-                Show(_destNote, string.Format("Part of the game is already here; {0:F1} GiB more will be used.", space / 1073741824.0), Good);
-            else Show(_destNote, string.Format("{0:F1} GiB will be used.", _check.Need / 1073741824.0), Good);
+            else
+            {
+                string dest = _dest.Text.Trim().Trim('"');
+                string link = Installer.LinkNote(_check, dest);
+                string used = space < Installer.FreshSpace(_check, dest)
+                    ? string.Format("Part of the game is already here; {0:F1} GiB more will be used.", space / 1073741824.0)
+                    : string.Format("{0:F1} GiB will be used.", space / 1073741824.0);
+                Show(_destNote, link.Length > 0 ? used + " " + link : used, Good);
+            }
             _go.Enabled = problem == null && !_installing;
         }
 
@@ -318,7 +324,12 @@ namespace ReleaseGate
                 Installer.Plan p = t.Result;
                 string version = Installer.Remote.Version;
                 if (p.Files == 0 && p.Remove == 0) Show(_destNote, "Up to date with release " + version + ".", Good);
-                else Show(_destNote, string.Format("Release {0}: {1} files to write, {2} to download.", version, p.Files, Amount(p.FetchBytes)), Good);
+                else
+                {
+                    string link = Installer.LinkNote(check, dest);
+                    string what = string.Format("Release {0}: {1} files to write, {2} to download.", version, p.Files, Amount(p.FetchBytes));
+                    Show(_destNote, link.Length > 0 ? what + " " + link : what, Good);
+                }
                 if (!_installed) _go.Text = p.Same > 0 ? "Update" : "Install";
             }, TaskScheduler.FromCurrentSynchronizationContext());
         }

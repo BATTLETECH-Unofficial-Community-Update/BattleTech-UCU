@@ -265,7 +265,55 @@ namespace ReleaseGate
                 return string.Equals(digest.Substring(7), BitConverter.ToString(sha.ComputeHash(s)).Replace("-", ""), StringComparison.OrdinalIgnoreCase);
         }
 
-        internal static string PublishBoth(GitHub main, GitHub data, string mainName, string dataName, string tag, Action<string> log)
+        /// <summary>
+        /// Housekeeping (the maintainer, 2026-11-15: "auto-prune every 10 releases"): the data repository keeps the data parts of its newest
+        /// KeepDataReleases published releases. Each release is about 8.75 GiB and GitHub has no total cap, so this is tidiness,
+        /// not a limit. Nothing here depends on older parts: the installer reads only the newest published release.
+        /// </summary>
+        internal const int KeepDataReleases = 10;
+        const string PrunedNote = "Data parts of this release were removed by housekeeping";
+
+        static bool IsDataPart(string name) { return Regex.IsMatch(name ?? "", @"-data-\d+\.zip$", RegexOptions.IgnoreCase); }
+
+        static DateTimeOffset PublishedAt(Dictionary<string, object> r)
+        {
+            object v; DateTimeOffset t;
+            return r.TryGetValue("published_at", out v) && v is string && DateTimeOffset.TryParse((string)v, out t) ? t : DateTimeOffset.MinValue;
+        }
+
+        /// <summary>
+        /// Deletes the data parts (never package.vault, the manifest, the installer copy or the release itself) of every published
+        /// release past the newest <paramref name="keep"/>, and says so in that release's notes. Drafts are never touched. Refuses
+        /// to run when the newest published release has no data parts: something is wrong there and nothing should be deleted.
+        /// </summary>
+        internal static string PruneData(GitHub data, string dataName, int keep, bool dryRun, Action<string> log)
+        {
+            if (keep < 3) throw new ArgumentException("Keep at least 3 releases.");
+            var pub = data.Releases().Where(r => !true.Equals(r["draft"])).Select((r, i) => new { r, i })
+                .OrderByDescending(x => PublishedAt(x.r)).ThenBy(x => x.i).Select(x => x.r).ToList();
+            if (pub.Count <= keep) return string.Format("Nothing to prune: {0} has {1} published releases and keeps {2}.", dataName, pub.Count, keep);
+            if (!GitHub.Assets(pub[0]).Any(a => IsDataPart(a["name"] as string)))
+                throw new IOException("The newest published release " + pub[0]["tag_name"] + " in " + dataName + " has no data parts; pruned nothing.");
+            int releases = 0, files = 0; long bytes = 0;
+            foreach (var r in pub.Skip(keep))
+            {
+                var parts = GitHub.Assets(r).Where(a => IsDataPart(a["name"] as string)).ToList();
+                if (parts.Count == 0) continue;
+                string tag = (string)r["tag_name"];
+                long size = parts.Sum(a => Convert.ToInt64(a["size"]));
+                log(string.Format("{0} {1}: {2} data parts, {3}", dryRun ? "Would remove" : "Removing", tag, parts.Count, Checks.Gib(size)));
+                if (!dryRun)
+                {
+                    foreach (var a in parts) data.DeleteAsset(a["id"]);
+                    data.AppendToBody(r, PrunedNote + " on " + DateTime.UtcNow.ToString("yyyy-MM-dd") + " (the newest " + keep + " releases keep theirs). " +
+                        "This version can't be installed online any more; the newest release can.");
+                }
+                releases++; files += parts.Count; bytes += size;
+            }
+            return string.Format("{0} {1} data parts ({2}) from {3} older releases in {4}.", dryRun ? "Would remove" : "Removed", files, Checks.Gib(bytes), releases, dataName);
+        }
+
+        internal static string PublishBoth(GitHub main, GitHub data, string mainName, string dataName, string tag, Action<string> log, bool prune = true)
         {
             var d = data.FindRelease(tag);
             var m = main.FindRelease(tag);
@@ -277,7 +325,14 @@ namespace ReleaseGate
             // Data first: the installer reads the data release, and a player who opens the main release should find it ready.
             if (true.Equals(d["draft"])) { d = data.Publish(d); log("Published " + tag + " in " + dataName); }
             if (true.Equals(m["draft"])) { m = main.Publish(m); log("Published " + tag + " in " + mainName); }
-            return "Release " + tag + " is public. " + m["html_url"];
+            string housekeeping = "";
+            if (prune)
+            {
+                // The release is already public: a failure here must not turn into a failed publish.
+                try { housekeeping = " " + PruneData(data, dataName, KeepDataReleases, false, log); }
+                catch (Exception e) { log("Pruning skipped: " + e.Message); housekeeping = " Pruning skipped: " + e.Message; }
+            }
+            return "Release " + tag + " is public. " + m["html_url"] + housekeeping;
         }
 
         /// <summary>

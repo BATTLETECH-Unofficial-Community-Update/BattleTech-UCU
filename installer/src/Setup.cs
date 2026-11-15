@@ -226,6 +226,8 @@ namespace ReleaseGate
                 return InstallResult.Failed;
             }
             string message;
+            string linkNote = Installer.LinkNote(c, dest);
+            if (linkNote.Length > 0) Console.Out.WriteLine(linkNote);
             if (remote != null)
             {
                 Installer.Plan plan = Installer.PlanInstall(c, dest);

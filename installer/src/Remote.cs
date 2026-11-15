@@ -65,7 +65,7 @@ namespace ReleaseGate
         /// of the installer. The main repository's releases carry only the installer, for players. The installer goes here
         /// when no package sits beside it, or with --remote.
         /// </summary>
-        public const string DefaultSource = "github:InternetDadCo/BattleTech-UCU-data";
+        public const string DefaultSource = "github:BATTLETECH-Unofficial-Community-Update/BattleTech-UCU-data";
         public const string InstallerName = "BattleTechUCUSetup.exe";
         const string Agent = "BattleTechUCU-Setup";
         const long Coalesce = 1 << 20;  // read through a gap this size rather than start another request

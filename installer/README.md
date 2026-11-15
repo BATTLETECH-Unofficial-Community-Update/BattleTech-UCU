@@ -10,7 +10,7 @@ The installer never changes that copy.
 2. **Confirms you own the game.** It asks your running Steam client for an ownership ticket for BATTLETECH (app 637090).
    It sends that ticket to the project's unlock server, which asks Valve to confirm it. An access code can be used
    instead. The server stores no IP addresses (`keyserver/`, `docs/keyserver-design.md`).
-3. **Downloads the release** from this repository's companion data repository, InternetDadCo/BattleTech-UCU-data.
+3. **Downloads the release** from this repository's companion data repository, BATTLETECH-Unofficial-Community-Update/BattleTech-UCU-data.
    Only the files your install doesn't already have are downloaded.
 4. **Installs into a separate folder.** It does two things:
    - copies files that are identical to the original game from your own install;
@@ -28,12 +28,14 @@ delete the install folder.
   [Installer workflow](../.github/workflows/installer.yml), and GitHub records an attestation for it. To check a
   downloaded copy:
   ```
-  gh attestation verify BattleTechUCUSetup.exe -R InternetDadCo/BattleTech-UCU
+  gh attestation verify BattleTechUCUSetup.exe -R BATTLETECH-Unofficial-Community-Update/BattleTech-UCU
   ```
-  The build is reproducible: with .NET SDK 10.0.403, `build.ps1` gives the same bytes as the workflow for the same commit.
+  The build is reproducible: with .NET SDK 10.0.404, `build.ps1` gives the same bytes as the workflow for the same commit.
 - **What a release installs.** Each release publishes `ucu-manifest.tsv`, and its SHA-256 is in the release notes. It
   lists every file the release installs, with its size, SHA-512 and origin:
-  - `retail`: identical to a file in your own BATTLETECH install, and copied from it;
+  - `retail`: identical to a file in your own BATTLETECH install, and taken from it: a hard link when UCU is on the
+    same NTFS drive as BATTLETECH for large binary assets (asset bundles, map data, video, sound banks; no extra disk
+    space), a copy for everything else, including code and every text or data file you might edit;
   - `unity`: identical to a stock file from the Unity Editor version that built the game;
   - `built`: an executable this project builds;
   - `data`: anything else.
@@ -48,7 +50,7 @@ delete the install folder.
 
 ## Building
 
-You need Windows and the .NET SDK 10.0.403. The exes target the .NET Framework that ships with Windows, so players need no
+You need Windows and the .NET SDK 10.0.404. The exes target the .NET Framework that ships with Windows, so players need no
 runtime.
 
 ```

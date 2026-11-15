@@ -46,7 +46,7 @@ namespace ReleaseGate
             Directory.Move(OldFolder, Folder);
             string ini = Path.Combine(Folder, "settings.ini");
             if (File.Exists(ini))
-                File.WriteAllText(ini, File.ReadAllText(ini).Replace("repo=InternetDadCo/BattleTech-Next", "repo=InternetDadCo/BattleTech-UCU"));
+                File.WriteAllText(ini, File.ReadAllText(ini).Replace("repo=InternetDadCo/BattleTech-Next", "repo=BATTLETECH-Unofficial-Community-Update/BattleTech-UCU"));
         }
 
         public Settings()
@@ -63,6 +63,14 @@ namespace ReleaseGate
                     }
             }
             catch (IOException) { }
+            // The repositories moved to an organisation (the maintainer, 2026-11-15). GitHub redirects reads under the old owner but
+            // the release token is refused there, so a saved old-owner repository follows the move; it is saved on close.
+            foreach (string key in new[] { "repo", "dataRepo" })
+            {
+                string v;
+                if (_v.TryGetValue(key, out v) && v.StartsWith("InternetDadCo/BattleTech-UCU", StringComparison.OrdinalIgnoreCase))
+                    _v[key] = "BATTLETECH-Unofficial-Community-Update/" + v.Substring("InternetDadCo/".Length);
+            }
         }
 
         public string Get(string key, string fallback)
@@ -249,12 +257,12 @@ namespace ReleaseGate
     {
         const string Title = "BattleTech UCU Release Manager";
         static readonly Color Good = Color.FromArgb(0, 110, 50), Bad = Color.FromArgb(170, 30, 30), Warn = Color.FromArgb(150, 90, 0);
-        const string DefaultRepo = "InternetDadCo/BattleTech-UCU";
+        const string DefaultRepo = "BATTLETECH-Unofficial-Community-Update/BattleTech-UCU";
         // The data repository's releases hold package.vault, the data parts and a copy of the installer; the installer reads
         // them from there (Remote.DefaultSource), so the main repository's release page shows only the installer.
-        const string DefaultDataRepo = "InternetDadCo/BattleTech-UCU-data";
+        const string DefaultDataRepo = "BATTLETECH-Unofficial-Community-Update/BattleTech-UCU-data";
         // Checks an install against the public manifest with nothing but PowerShell; build.ps1 -Deploy puts it beside this tool.
-        const string VerifyScript = "verify.ps1";
+        internal const string VerifyScript = "verify.ps1";
 
         readonly Settings _settings = new Settings();
         readonly string _logFile = Path.Combine(Settings.Folder, "log-" + DateTime.Now.ToString("yyyy-MM-dd") + ".txt");
@@ -623,7 +631,7 @@ namespace ReleaseGate
         // Saved only when the user typed it, so computed paths follow the next version.
         static string Typed(TextBox box) { return box.Text == box.Tag as string ? "" : box.Text; }
 
-        static string DefaultNotes(string label)
+        internal static string DefaultNotes(string label)
         {
             return "Needs your own copy of BATTLETECH on Steam, installed and unmodified, and Steam running and signed in when you install and play.\r\n\r\n" +
                 "1. Download BattleTechUCUSetup.exe below and run it. That's the only file you need: it downloads the game itself. " +
@@ -829,7 +837,7 @@ namespace ReleaseGate
             catch (IOException) { return new List<string>(); }
         }
 
-        static List<string> AssetFiles(string dir)
+        internal static List<string> AssetFiles(string dir)
         {
             // Upload order. The installer only takes a release that has package.vault, so it goes last: a release whose
             // upload stopped part way is passed over rather than installed with parts missing.
@@ -1035,7 +1043,7 @@ namespace ReleaseGate
             RunChecks();
         }
 
-        static VaultLock LockOf(string dir)
+        internal static VaultLock LockOf(string dir)
         {
             string v = Path.Combine(dir ?? "", Gate.VaultName);
             try

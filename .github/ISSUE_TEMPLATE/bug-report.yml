@@ -63,5 +63,6 @@ body:
       label: Player.log
       description: |
         Close the game, then drag `Player.log` into this box. It is in
-        `%USERPROFILE%\AppData\LocalLow\DefaultCompany\BattleTechU6\` (paste that into Explorer's address bar).
+        `%USERPROFILE%\AppData\LocalLow\DefaultCompany\BattleTechU6\` (paste that into Explorer's address bar);
+        from 2.1.4-2B it is in `%USERPROFILE%\AppData\LocalLow\BTUCU\BattleTechUCU\`.
         The game overwrites it on the next start, so attach it before you play again.

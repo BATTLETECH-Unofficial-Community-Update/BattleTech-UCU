@@ -1,12 +1,61 @@
 # Changelog
 
-## Next release (in progress)
+## 2.1.4-2B (BT-UCU Beta 2.4)
 
 - **Skirmish launch.** Pressing Play on the skirmish setup screen right after the lances fill in could freeze the load:
   the game kept repeating the same error and the mission never started. The lance crests no longer try to draw on a
   screen that has already closed. This is a retail bug.
+- **Co-op game data check.** The check that both players have the same game data no longer depends on the order in
+  which the files are listed on disk (with mods, that order came from the mod loader) or on line endings: a mod
+  file with Windows line endings now counts the same as one with Unix line endings. Two BattleTech Advanced installs
+  were refused because one PC's copies of the CAB mech packs had Windows line endings and the other's Unix ones,
+  with the same content. This is a retail bug. The game also writes
+  `mp-defhash.tsv` next to `Player.log` (in `AppData\LocalLow\BTUCU\BattleTechUCU`) when it starts, hosts or
+  joins: one line per file in the check. If a join is refused with "Game data mismatch (def hash)", the two players
+  can compare their copies to see which files differ. With BattleTech Advanced, first make sure both players have the
+  same BTA version: the join compares mod names, not versions.
+- **Blank rows on the salvage screen** ([issue #8](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/8),
+  also seen in [issue #7](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/7)). After a few contracts in one session, some salvage rows took up space but
+  showed nothing: the item could still be picked or was handed out at random, but you could not see it. The same
+  blank rows could turn up in other item lists that reuse them, such as the Mech Lab inventory, until a restart.
+  When the salvage screen closed, the game threw the old screen away in the same moment it moved the rows out to be
+  reused, and the rows came back switched off. The game now throws those screens away at the end of the frame, after
+  the rows are out.
+- **Loading a mid-battle save with mods.** The game's file loader could get stuck for good on one file while it
+  loaded a saved battle: the mission's load screen came up, but BEGIN did nothing. It happened when a faction's logo
+  was still loading for one part of the game while the faction itself loaded for another. This showed on every
+  mid-battle save loaded with BattleTech Advanced. This is a retail bug. BattleTech Advanced keeps mid-battle saves
+  off by default, and other faults remain before those saves play on.
+- **Smaller installs on the same drive as BATTLETECH.** About 11 GiB of UCU's files are identical to files in your
+  own BATTLETECH install. When UCU is installed on the same NTFS drive, the installer now links the large ones (asset
+  bundles, map data, videos and sound banks, 10.8 GiB) to BATTLETECH's instead of copying them, so they take no extra
+  space; it checks each one first, as before. Code and every text or data file you might edit, such as the JSON files,
+  are still copied, so editing them in UCU's folder never changes BATTLETECH. On another drive the installer copies
+  everything and says so. An existing install on the same drive switches the next time you run the installer.
+  Uninstalling or moving BATTLETECH doesn't break UCU: a link is the file itself.
 - **Link BTA with more than one UCU install.** Run from an install's `ModSupport` folder, `Link BTA.cmd` and
   `link-bta.sh` now link that install, instead of listing every UCU install in your Steam libraries and asking.
+- **Ghosting and smeared ground with anti-aliasing and motion blur.** On High settings, trees and foliage left
+  ghost trails and the ground flickered and smeared, even with the camera still. Unity 6 drew the game's trees into
+  the motion pass that the anti-aliasing and motion blur read, with false movement of hundreds of pixels; retail
+  draws none there. Trees and foliage now give only the camera's own movement, as on retail.
+- **Data folder renamed.** The game's saves, profiles, settings and `Player.log` now live in
+  `AppData\LocalLow\BTUCU\BattleTechUCU`, not `AppData\LocalLow\DefaultCompany\BattleTechU6`. On the first start the
+  game moves your saves, profiles and settings from the old folder, and on Windows (and under Proton) also copies
+  the game's settings from the registry, such as whether mods are on; then it deletes the old folder and registry
+  key. During that first start the window opens at the default size, then changes once to your old window size and
+  mode; later starts open that way. If your old size is missing or no longer fits the screen, the game keeps the
+  default window. Which monitor the window was on is not restored. If something stops the move, the old folder is
+  kept and the next start tries again, so nothing is lost.
+- **Unit picks with large mod packs.** With big mod packs such as BattleTech Advanced, a lance or contract that picks
+  its units by tags could match more than 999 groups of tags. The game's SQLite 3.16.2 refuses a query that size
+  ("too many SQL variables"), so that unit pick failed with an error instead of choosing a unit. UCU now ships SQLite
+  3.54.1, whose limit is 32,766: in our tests with BattleTech Advanced loaded it answers all 132 such queries that
+  3.16.2 refused, as the SQLite 3.38.2 that BattleTech Advanced installs for the original game does.
+  Without mods the game never comes near the limit.
+- **Known issue: memory in long sessions.** Memory use grows during a long session, about 1.5 GB above the original
+  game after three missions and then about 200 MB per mission (around 9 GB after twelve). The original game also grows
+  as you play. Restarting the game returns the memory. We are still working on it.
 
 ## 2.1.3-2B
 
@@ -21,12 +70,12 @@
   folders with symbolic links (or copies them with `--copy`) and tells you the Steam launch option the mod loader
   needs. On our Linux test PC the mods load through the links, but BTA on UCU under Proton does not yet reach the
   main menu; we are looking into it.
-- **BattleTech Advanced: fast preloading** ([issue #4](https://github.com/InternetDadCo/BattleTech-UCU/issues/4)). With
+- **BattleTech Advanced: fast preloading** ([issue #4](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/4)). With
   CustomPrewarm's caching turned on, the first start failed to write the cache and turned caching off again. The mod
   needs a small piece of .NET that the new engine does not ship. The mod loader now supplies it, so the cache is
   written once and later starts read it. In our test with BTA (Core 20.3), a save loaded in about
   25 seconds with the cache, against 62.5 seconds without. Reported, with the fix, by gkirkpatrick.
-- **BattleTech Advanced: fast preloading with BTA's backgrounds** ([issue #5](https://github.com/InternetDadCo/BattleTech-UCU/issues/5)).
+- **BattleTech Advanced: fast preloading with BTA's backgrounds** ([issue #5](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/5)).
   CustomPrewarm's cache build also stopped on BTA's career backgrounds, on retail as well, and turned caching off. The
   mod loader now works around that mod bug, so BTA can use the cache. Caching stays off unless you or BTA turn it on;
   if it already turned itself off, set `UseFastPreloading` back to `true`. Reported, with the fix, by gkirkpatrick.
@@ -41,7 +90,7 @@
 - **Russian text.** With the game set to Russian, menus showed a box for every Cyrillic letter, because the Russian
   fonts the game switches to were missing. Retail's five Russian fonts are back, so Russian menus and popups read
   properly again.
-- **BattleTech Advanced: ship menus after loading a save** ([issue #3](https://github.com/InternetDadCo/BattleTech-UCU/issues/3)). With BTA linked, some saves arrived on the ship with the
+- **BattleTech Advanced: ship menus after loading a save** ([issue #3](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/3)). With BTA linked, some saves arrived on the ship with the
   menu buttons doing nothing. A mod BTA uses loads pilot portraits in a way the 2018 engine allowed and the new one
   refuses, so those portraits never loaded and the ship screens stopped setting up. The mod loader now lets those
   portraits load, and the menus work. Installing this version updates the loader; BTA does not need linking again.
@@ -281,7 +330,8 @@ Elsewhere:
 - **Version.** Up to 2.0.0-10A (2.0.0-1B reports retail's 1.9.1 again; see above), retail 1.9.1 saves read as older, so an Ironman save is backed up on load. New saves carry 2.0.0-10A. Multiplayer no
   longer matches retail clients. The mod-loader cache re-keys once. The unused `VersionInfo.CURRENT_VERSION_NUMBER` still says 1.9.1.
 - **Graphics API.** D3D11 is the default, as in retail, and D3D12 is supported, modded and unmodded. Graphics jobs are off.
-- **Third-party code.** Newtonsoft 13, current DOTween, the Steamworks.NET package and SVG Importer 2.0. InControl, Lidgren,
+- **Third-party code.** Newtonsoft 13, current DOTween, the Steamworks.NET package, SVG Importer 2.0 and SQLite 3.54.1 (retail
+  ships 3.16.2; game-data queries return the same results in the same order). InControl, Lidgren,
   Harmony 1.2, NGettext, Ionic.Zip, Dapper and protobuf-net stay as retail binaries.
 - **Audio and video.** Retail's Wwise 2016.2.2 and Bink 1.300n runtimes with retail banks and movies, with no transcoding.
 - **Developer mode.** The main menu's SIM GAME and DEBUG buttons depend on `DebugBridge.testToolsEnabled`: on in the Editor and

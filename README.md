@@ -12,15 +12,19 @@ This project is a personal, non-commercial effort and is not affiliated with Par
 
 **This is a beta, work-in-progress release.** It is maintained by volunteers. Please be patient.
 
-## Support
+## Support and Contact
 
-**BUGS**: Use the Issues link on this repository.
+**DOWNLOAD**: [releases.btucu.org](https://releases.btucu.org)
 
-**FEEDBACK/DISCUSSION**: We have a discord at https://discord.gg/tbmrmQzpvd 
+**DISCORD**: [discord.btucu.org](https://discord.btucu.org)
+
+**BUGS**: [issues.btucu.org](https://issues.btucu.org) (the Issues tab on our GitHub repository). Create an issue and select the 'Bug report' template, which will tell you where to find your logs. For very large logs, use a Google Drive link.
+
+**CONTACT**: info@btucu.org
 
 ## Current Release
 
-**Version 2.1.3-2B**. Version definitions have to stick to the numbering system retail used, which is a little complicated:
+**Version 2.1.4-2B** ([Release Notes](CHANGELOG.md)). Version definitions have to stick to the retail numbering system, but we assign our own meaning to it:
 
 - **2**: Major release: 2.0 is defined as Unity 6-built feature parity with retail and its DLC along with bugfixes, optimizations, and the multiplayer changes below.
 - **1**: Minor release with new features or requirements, non-breaking changes backwards compatible within the major release line.
@@ -81,6 +85,10 @@ Good to know:
 - Link BTA won't run while UCU is open, if it finds a `Mods` folder it didn't make, if either install isn't on an NTFS drive in this PC (use the copy launcher then), or, when copying, if the drive is too full. It writes nothing until those checks pass.
 - **On Linux or a Steam Deck**, open a terminal in the `ModSupport` folder and run `bash link-bta.sh` instead (add `--copy` to copy). Then add `WINEDLLOVERRIDES="winhttp=n,b" %command%` to UCU's Steam launch options, or Proton won't start the mod loader. On our Linux test PC the mods load through the links, but BTA on UCU under Proton does not yet reach the main menu; we are looking into it.
 
+## For mod authors
+
+Combat saves (saving in the middle of a battle) fail with most large mod packs, on the 2018 game too, which is why BTA turns them off. [Combat saves: notes for mod authors](docs/mod-authors-combat-saves.md) lists what a mod can change so that its combat saves load correctly on both games.
+
 ## Who I am, and why this project
 
 This project began as a thought experiment of 'I wonder whether this is possible' and turned into a full-blown update of the game to Unity 6.
@@ -122,6 +130,7 @@ Places where the port means to match retail but doesn't quite yet. Deliberate ch
 - **Martian maps** look less red and less saturated than retail's, and their rocks show more contrast. This was measured at different times of day and isn't confirmed yet.
 - **Most maps** haven't been compared with retail side by side under the same weather, and decals have been measured only on Central Mountain and Still Valley.
 - **Portraits** read slightly darker than retail, mostly on the shaded side of the face, and one preset's hair tips look cyan.
+- **Memory in long sessions:** Memory use grows during a long session, about 1.5 GB above the original game after three missions and then about 200 MB per mission (around 9 GB after twelve). The original game also grows as you play. Restarting the game returns the memory. We are still working on it.
 - **Linux and Steam Deck (Proton):** Up to 2.1.0-2B, the main menu's animated background showed colour bars (vertical stripes) under Proton, because Proton can't play that video format. 2.1.1-2B converts the menu background and the small video screens on Urban Warfare city maps to a format Proton plays; on one Linux PC the menu video played under Proton, but the Urban Warfare screens have only been checked on Windows. The opening cinematic uses a different video format and plays; the story cutscenes use that same format, so they should play too, but they haven't been checked yet. Proton has only been tested as far as the main menu, on one Linux PC and not on a Steam Deck, and the game needs a working sound system (PulseAudio or PipeWire, which desktops and SteamOS have) or it closes at start-up.
 
 ## Visuals and lighting

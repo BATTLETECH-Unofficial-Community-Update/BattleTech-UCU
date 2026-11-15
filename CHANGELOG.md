@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.1.3-2B
+
+- **Memory after loading a save.** Every career you loaded in one session (Continue, Load, or a new career after
+  going back to the main menu) left the previous career in memory, star map and all, because two of the game's own
+  listeners never let go of it. Loading a save now releases the career you left. This is a retail bug.
+- **Link BTA without the copy.** `Link BTA.cmd` now links BTA's mod folders into UCU instead of copying about 20 GB,
+  and BTA updates reach UCU without a re-run. Both games then share those folders: UCU writes mod logs and settings
+  into the BTA install, and a mod turned off in one is off in the other. `Link BTA (copy).cmd` copies as before, and
+  re-running either switches an install. Contributed by gkirkpatrick.
+- **Link BTA on Linux and Steam Deck.** `link-bta.sh` in `ModSupport` does the same under Proton: it links BTA's mod
+  folders with symbolic links (or copies them with `--copy`) and tells you the Steam launch option the mod loader
+  needs. It has been tested only on Windows' built-in Linux with a stand-in BTA folder, not yet under Proton or on a
+  Steam Deck.
+- **BattleTech Advanced: fast preloading** ([issue #4](https://github.com/InternetDadCo/BattleTech-UCU/issues/4)). With
+  CustomPrewarm's caching turned on, the first start failed to write the cache and turned caching off again. The mod
+  needs a small piece of .NET that the new engine does not ship. The mod loader now supplies it, so the cache is
+  written once and later starts read it. In our test with BTA (Core 20.3), a save loaded in about
+  25 seconds with the cache, against 62.5 seconds without. Reported, with the fix, by gkirkpatrick.
+- **BattleTech Advanced: fast preloading with BTA's backgrounds** ([issue #5](https://github.com/InternetDadCo/BattleTech-UCU/issues/5)).
+  CustomPrewarm's cache build also stopped on BTA's career backgrounds, on retail as well, and turned caching off. The
+  mod loader now works around that mod bug, so BTA can use the cache. Caching stays off unless you or BTA turn it on;
+  if it already turned itself off, set `UseFastPreloading` back to `true`. Reported, with the fix, by gkirkpatrick.
+
 ## 2.1.1-2B
 
 - **Menu and billboard videos on Linux and Steam Deck.** The main menu's background video and the nine Urban Warfare

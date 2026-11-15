@@ -20,7 +20,7 @@ This project is a personal, non-commercial effort and is not affiliated with Par
 
 ## Current Release
 
-**Version 2.1.1-2B**. Version definitions have to stick to the numbering system retail used, which is a little complicated:
+**Version 2.1.3-2B**. Version definitions have to stick to the numbering system retail used, which is a little complicated:
 
 - **2**: Major release: 2.0 is defined as Unity 6-built feature parity with retail and its DLC along with bugfixes, optimizations, and the multiplayer changes below.
 - **1**: Minor release with new features or requirements, non-breaking changes backwards compatible within the major release line.
@@ -62,21 +62,24 @@ Updates to BT-UCU will update the installed folder in place. To uninstall, simpl
 
 ## Playing BattleTech Advanced (BTA) on UCU
 
-From 2.1.0-2B, UCU can run mods through ModTek, including the BattleTech Advanced pack. BTA's own installer needs retail BATTLETECH 1.9.1 and won't install onto UCU, so you install BTA on retail as usual and then copy it across with Link BTA.
+From 2.1.0-2B, UCU can run mods through ModTek, including the BattleTech Advanced pack. BTA's own installer needs retail BATTLETECH 1.9.1 and won't install onto UCU, so you install BTA on retail as usual and then link it across with Link BTA.
 
 1. **Install BTA on your retail game** the way its authors describe, and start it once.
 2. **Install UCU with mod support on.** The installer has a *Mod support* box under "Install to", ticked by default. It puts the mod loader beside `BattleTech.exe`; without a `Mods` folder, UCU starts exactly as it does unmodded. Start UCU once.
-3. **Run Link BTA.** Open the `ModSupport` folder inside your UCU install and double-click `Link BTA.cmd`. It finds both installs in your Steam libraries and asks about any it can't find (or drag your BTA folder onto it). It copies BTA's `Mods` folder (plus `Mods_sfx` and `Music`) and your BTA saves into UCU. Your BTA install is only read. UCU's drive needs about 20 GB free for this.
+3. **Run Link BTA.** Open the `ModSupport` folder inside your UCU install and double-click `Link BTA.cmd`. It finds both installs in your Steam libraries and asks about any it can't find (or drag your BTA folder onto it). It links each of BTA's mod folders (plus `Mods_sfx` and `Music`) into UCU, which takes seconds and no disk space, and copies your BTA saves. Both installs must be on NTFS drives in this PC.
 4. **Start UCU as usual.** The first start is slow while ModTek builds its cache.
 
 Good to know:
 
-- **After a BTA update**, run Link BTA again. UCU's `Mods` folder is re-synced to match BTA's, so add mods to BTA, not to UCU's copy.
+- **Both games share the linked mods.** Mods write into their own folders while the game runs, so UCU writes mod logs and settings into your BTA install, and turning a mod off in one game turns it off in the other.
+- **After a BTA update**, UCU picks it up by itself. If the pack added or removed a mod, run Link BTA again. Add mods to BTA, not to UCU.
+- **To keep the games apart**, double-click `Link BTA (copy).cmd` instead. It copies the mods, so your BTA install is only read, but UCU's drive needs about 20 GB free, and you run it again after each BTA update.
 - **Saves:** a BTA career carries over. On a re-run, a save you made in UCU is kept, not replaced by an older BTA one. To skip saves, run `Link BTA.cmd -NoSaves`.
 - **Leave a mod out:** `Link BTA.cmd -Skip ModName`.
-- **Back to unmodded UCU:** `Link BTA.cmd -Unlink` removes the copied mods. Your saves stay.
+- **Back to unmodded UCU:** `Link BTA.cmd -Unlink` removes the linked or copied mods. Your saves and your BTA install stay.
 - **Mods didn't load?** Open `BattleTechPortBootstrap.log` beside `BattleTech.exe` and attach it to your bug report with `Player.log`. A good run ends with `done|retargeted=5`.
-- Link BTA won't run while UCU is open, if the drive is too full, or if it finds a `Mods` folder it didn't make. It writes nothing until those checks pass.
+- Link BTA won't run while UCU is open, if it finds a `Mods` folder it didn't make, if either install isn't on an NTFS drive in this PC (use the copy launcher then), or, when copying, if the drive is too full. It writes nothing until those checks pass.
+- **On Linux or a Steam Deck**, open a terminal in the `ModSupport` folder and run `bash link-bta.sh` instead (add `--copy` to copy). Then add `WINEDLLOVERRIDES="winhttp=n,b" %command%` to UCU's Steam launch options, or Proton won't start the mod loader. The script has been tested only on Windows' built-in Linux with a stand-in BTA folder, not under Proton or on a Steam Deck, and nobody has run BTA on UCU under Proton yet, so please tell us how it goes.
 
 ## Who I am, and why this project
 

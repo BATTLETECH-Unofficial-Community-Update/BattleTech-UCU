@@ -79,7 +79,7 @@ Good to know:
 - **Back to unmodded UCU:** `Link BTA.cmd -Unlink` removes the linked or copied mods. Your saves and your BTA install stay.
 - **Mods didn't load?** Open `BattleTechPortBootstrap.log` beside `BattleTech.exe` and attach it to your bug report with `Player.log`. A good run ends with `done|retargeted=5`.
 - Link BTA won't run while UCU is open, if it finds a `Mods` folder it didn't make, if either install isn't on an NTFS drive in this PC (use the copy launcher then), or, when copying, if the drive is too full. It writes nothing until those checks pass.
-- **On Linux or a Steam Deck**, open a terminal in the `ModSupport` folder and run `bash link-bta.sh` instead (add `--copy` to copy). Then add `WINEDLLOVERRIDES="winhttp=n,b" %command%` to UCU's Steam launch options, or Proton won't start the mod loader. The script has been tested only on Windows' built-in Linux with a stand-in BTA folder, not under Proton or on a Steam Deck, and nobody has run BTA on UCU under Proton yet, so please tell us how it goes.
+- **On Linux or a Steam Deck**, open a terminal in the `ModSupport` folder and run `bash link-bta.sh` instead (add `--copy` to copy). Then add `WINEDLLOVERRIDES="winhttp=n,b" %command%` to UCU's Steam launch options, or Proton won't start the mod loader. On one Linux PC under Proton, the mod loader started and ModTek loaded BTA's mods through the links, but nobody has played BTA on UCU under Proton or tried a Steam Deck yet, so please tell us how it goes.
 
 ## Who I am, and why this project
 

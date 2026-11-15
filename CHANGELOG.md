@@ -1,5 +1,11 @@
 # Changelog
 
+## Next release (in progress)
+
+- **Skirmish launch.** Pressing Play on the skirmish setup screen right after the lances fill in could freeze the load:
+  the game kept repeating the same error and the mission never started. The lance crests no longer try to draw on a
+  screen that has already closed. This is a retail bug.
+
 ## 2.1.3-2B
 
 - **Memory after loading a save.** Every career you loaded in one session (Continue, Load, or a new career after
@@ -11,8 +17,8 @@
   re-running either switches an install. Contributed by gkirkpatrick.
 - **Link BTA on Linux and Steam Deck.** `link-bta.sh` in `ModSupport` does the same under Proton: it links BTA's mod
   folders with symbolic links (or copies them with `--copy`) and tells you the Steam launch option the mod loader
-  needs. It has been tested only on Windows' built-in Linux with a stand-in BTA folder, not yet under Proton or on a
-  Steam Deck.
+  needs. On one Linux PC under Proton, the mod loader started and loaded BTA's mods through the links; nobody has
+  played BTA on UCU under Proton or tried a Steam Deck yet.
 - **BattleTech Advanced: fast preloading** ([issue #4](https://github.com/InternetDadCo/BattleTech-UCU/issues/4)). With
   CustomPrewarm's caching turned on, the first start failed to write the cache and turned caching off again. The mod
   needs a small piece of .NET that the new engine does not ship. The mod loader now supplies it, so the cache is

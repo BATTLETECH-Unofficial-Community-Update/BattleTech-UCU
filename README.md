@@ -24,7 +24,7 @@ This project is a personal, non-commercial effort and is not affiliated with Par
 
 ## Current Release
 
-**Version 2.1.4-2B** (more simply: UCU Beta 2.4). ([Release Notes](CHANGELOG.md)). Version definitions have to stick to the retail numbering system, but we assign our own meaning to it:
+**Version 2.1.5-2B** (more simply: UCU Beta 2.5). ([Release Notes](CHANGELOG.md)). Version definitions have to stick to the retail numbering system, but we assign our own meaning to it:
 
 - **2**: Major release: 2.0 is defined as Unity 6-built feature parity with retail and its DLC along with bugfixes, optimizations, and the multiplayer changes below.
 - **1**: Minor release with new features or requirements, non-breaking changes backwards compatible within the major release line.
@@ -127,7 +127,7 @@ The update is playable and (we hope) most of what's needed now is attention on s
 
 We've also maintained mod support and loaded Battletech Advanced, but we need the community's help doing playthroughs and testing other mods.
 
-## Known issues
+## Known Issues
 
 Places where the port means to match retail but doesn't quite yet. Deliberate changes are in [CHANGELOG.md](CHANGELOG.md).
 
@@ -138,6 +138,12 @@ Places where the port means to match retail but doesn't quite yet. Deliberate ch
 - **Portraits** read slightly darker than retail, mostly on the shaded side of the face, and one preset's hair tips look cyan.
 - **Memory in long sessions:** Memory use grows during a long session, about 1.5 GB above the original game after three missions and then about 200 MB per mission (around 9 GB after twelve). The original game also grows as you play. Restarting the game returns the memory. We are still working on it.
 - **Linux and Steam Deck (Proton):** Up to 2.1.0-2B, the main menu's animated background showed colour bars (vertical stripes) under Proton, because Proton can't play that video format. 2.1.1-2B converts the menu background and the small video screens on Urban Warfare city maps to a format Proton plays; on one Linux PC the menu video played under Proton, but the Urban Warfare screens have only been checked on Windows. The opening cinematic uses a different video format and plays; the story cutscenes use that same format, so they should play too, but they haven't been checked yet. Proton has been tested on one Linux PC (unmodded as far as the main menu, and with BattleTech Advanced through a skirmish), not on a Steam Deck, and the game needs a working sound system (PulseAudio or PipeWire, which desktops and SteamOS have) or it closes at start-up.
+
+## Known Issues (Modders)
+
+Things only someone running or writing mods would see.
+
+- **Log lines without ModTek:** With mod support on and no ModTek installed, `Player.log` shows "Error getting types in assembly ... BattleTechPortBootstrap ... Could not load MonoMod.Core" five times at each start. It's harmless: the original game's own scan of loaded code writes it as an information line, and the game runs normally.
 
 ## Visuals and lighting
 

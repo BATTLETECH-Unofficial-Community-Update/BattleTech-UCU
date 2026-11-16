@@ -4,6 +4,25 @@
 
 **[btucu.org](https://btucu.org)**
 
+## Contents
+
+- [Disclaimers](#disclaimers)
+- [Support and Contact](#support-and-contact)
+- [Current Release](#current-release)
+- [Mission and Scope](#mission-and-scope)
+- [Linux and MacOS](#linux-and-macos)
+- [What's different from the 2018 retail game (and what isn't)](#whats-different-from-the-2018-retail-game-and-what-isnt)
+- [Installing and Running BattleTech: Unofficial Community Update](#installing-and-running-battletech-unofficial-community-update)
+- [Playing BattleTech Advanced (BTA) on UCU](#playing-battletech-advanced-bta-on-ucu)
+- [For mod authors](#for-mod-authors)
+- [Who I am, and why this project](#who-i-am-and-why-this-project) ([A note on AI](#a-note-on-ai))
+- [Project Status](#project-status)
+- [Known Issues](#known-issues) and [Known Issues (Modders)](#known-issues-modders)
+- [Visuals and lighting](#visuals-and-lighting)
+- [Roadmap](#roadmap)
+- [Rights and Licensing](#rights-and-licensing)
+- [Credits](#credits)
+
 A (lowercase h) harebrained scheme to port (uppercase) Harebrained Schemes' [*BATTLETECH*](https://www.paradoxinteractive.com/games/battletech) (Unity 2018.4) and all DLC to Unity 6. It adds campaign/career co-op, faster loading and several bugfixes. Retail release (Steam or GOG) is required to run it.
 
 ## Disclaimers

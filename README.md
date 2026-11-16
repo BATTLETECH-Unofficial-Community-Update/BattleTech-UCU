@@ -4,7 +4,7 @@
 
 **[btucu.org](https://btucu.org)**
 
-A (lowercase h) harebrained scheme to port (uppercase) Harebrained Schemes' [*BATTLETECH*](https://www.paradoxinteractive.com/games/battletech) (2018; launched on Unity 5.6, on Unity 2018.4 since 2019) and all DLC to Unity 6. It adds campaign/career co-op, faster loading and several bugfixes. Retail release (Steam only at the moment) is required to run it.
+A (lowercase h) harebrained scheme to port (uppercase) Harebrained Schemes' [*BATTLETECH*](https://www.paradoxinteractive.com/games/battletech) (Unity 2018.4) and all DLC to Unity 6. It adds campaign/career co-op, faster loading and several bugfixes. Retail release (Steam or GOG) is required to run it.
 
 ## Disclaimers
 
@@ -33,9 +33,15 @@ This project is a personal, non-commercial effort and is not affiliated with Par
 
 The initial 2.0.0A line represented the development cycle from April 2026 to November 2026. Beta 1 was released publicly on November 13, 2026.
 
+## Mission and Scope
+
+Since 'custodian' already has a specific meaning to Paradox Interactive, we can't use that word, but it's the correct word; so instead we'll use 'stewards.' It is our feeling that HBS did a fine job with BATTLETECH and that, for business reasons beyond our understanding, things just didn't work out in such a way that this title could get something like Stellaris' [Custodian Team](https://forum.paradoxplaza.com/forum/developer-diary/stellaris-dev-diary-214-announcing-the-custodians-initiative-and-the-free-lem-update.1477655/) -- but that a bit of polish and some multiplayer love could reinvigorate the project and bring people (and sales) to a title that deserves both. 
+
+We are not game designers and we are not here to impose our vision upon BATTLETECH. That's what mods are for, and we don't make mods. We support the people who do.
+
 ## Linux and MacOS
 
-Linux (Proton) is ready for testing. On one Linux PC, the Beta 1 package installed, passed the ownership check and reached the main menu under Proton; nobody has played past the main menu on Linux yet, or tried a Steam Deck. From 2.1.1-2B the main menu's background video plays under Proton instead of showing colour bars (see Known issues). If you try it on Linux or a Steam Deck, please tell us how it went through the Issues link, whether it worked or not. Native Linux is more work but theoretically possible.
+Linux (Proton) is ready for testing. If you try it on Linux or a Steam Deck, please tell us how it went through the Issues link. Native Linux is more work but theoretically possible.
 
 MacOS is harder as I have no Mac hardware available for it. This will depend on somebody in the community who does coming on board, or my getting access to a gaming Mac.
 
@@ -47,7 +53,7 @@ MacOS is harder as I have no Mac hardware available for it. This will depend on 
 - **Direct3D 12 is available.** This is a course for future development: D3D12 offers no performance or visual benefit for players (yet). Start the game with `-force-d3d12` to switch. 
 - **Mods still work.** ModTek and Harmony mods run with no rebuild. A BattleTech Advanced career has been played through a contract, salvage, and a save and reload, but additional testing is required.
 - **Content is unchanged.** If we didn't have to change something to make it work in Unity 6 or with multiplayer, we didn't, other than bugfixes and optimizations.
-- **Paradox Online Services.** Paradox accounts work as in retail. Some analysis telemetry (app launch, hardware info) is sent to Paradox in retail but some of it was being rejected. We kept what was being accepted and disabled what was being rejected.
+- **Paradox Online Services.** Paradox accounts work as in retail. Some analysis telemetry (app launch, hardware info) is sent to Paradox in retail but some of it was being rejected. We kept what was being accepted.
 
 See the [CHANGELOG](CHANGELOG.md) for the full list.
 
@@ -55,22 +61,22 @@ See the [CHANGELOG](CHANGELOG.md) for the full list.
 
 ## Installing and Running BattleTech: Unofficial Community Update
 
-Releases are packaged into an installer which has several layers of validation (so you must be online for the install):
+Releases are packaged into a launcher which has several layers of validation (so you must be online for the install):
 
-- The installer validates that you own Battletech (retail) through Steam's API and issues a BT-UCU key based on that validation. That is used to download and decrypt the update.
-- Running the installed game validates that you own it on Steam (and multiplayer requires separate copies -- you can run the game from a shared family library, but only one player in any session can use that copy)
+- The installer validates that you own Battletech (retail) through either Steam or GOG and issues a BT-UCU key based on that validation. That is used to download and decrypt the update. This happens automatically when you run the launcher.
+- Running the installed game validates that you own it on Steam (and multiplayer requires separate copies -- you can run the game from a shared family library, but only one player in any session can use that copy). The GOG version runs through GOG Galaxy.
 
-The downside to all this validation is that you end up with double the normal install size (the original retail install remains untouched, and then UCU installs in its own location). You can safely remove the original retail install after UCU is installed, but you'd just need it back again for UCU updates. There is no way around this unless Paradox wants to adopt us, and we're not holding our breath!
+The downside to all this validation is that you end up with larger install sizes, although not as large as the first few releases; we use hard links to pull in the retail files that UCU needs whenever possible, but there is no way around some copy bloat unless Paradox wants to adopt us, and we're not holding our breath!
 
 Updates to BT-UCU will update the installed folder in place. To uninstall, simply delete the folder. 
 
 ## Playing BattleTech Advanced (BTA) on UCU
 
-From 2.1.0-2B, UCU can run mods through ModTek, including the BattleTech Advanced pack. BTA's own installer needs retail BATTLETECH 1.9.1 and won't install onto UCU, so you install BTA on retail as usual and then link it across with Link BTA.
+From 2.1.0-2B, UCU can run mods through ModTek, including the BattleTech Advanced pack. BTA's own installer needs retail BATTLETECH 1.9.1 and won't install onto UCU, so you install BTA on retail as usual and then link it across from UCU's launcher. RogueTech and other ModTek packs link the same way.
 
 1. **Install BTA on your retail game** the way its authors describe, and start it once.
 2. **Install UCU with mod support on.** The installer has a *Mod support* box under "Install to", ticked by default. It puts the mod loader beside `BattleTech.exe`; without a `Mods` folder, UCU starts exactly as it does unmodded. Start UCU once.
-3. **Run Link BTA.** Open the `ModSupport` folder inside your UCU install and double-click `Link BTA.cmd`. It finds both installs in your Steam libraries and asks about any it can't find (or drag your BTA folder onto it). It links each of BTA's mod folders (plus `Mods_sfx` and `Music`) into UCU, which takes seconds and no disk space, and copies your BTA saves. Both installs must be on NTFS drives in this PC.
+3. **Link BTA.** Open UCU's launcher (`BattleTech UCU Launcher.exe` in your UCU install) and use its *Mods* tab, or open the `ModSupport` folder inside your UCU install and double-click `Link BTA.cmd`. It finds both installs in your Steam libraries and asks about any it can't find (or drag your BTA folder onto it). It links each of BTA's mod folders (plus `Mods_sfx` and `Music`) into UCU, which takes seconds and no disk space, and copies your BTA saves. Both installs must be on NTFS drives in this PC.
 4. **Start UCU as usual.** The first start is slow while ModTek builds its cache.
 
 Good to know:
@@ -83,7 +89,7 @@ Good to know:
 - **Back to unmodded UCU:** `Link BTA.cmd -Unlink` removes the linked or copied mods. Your saves and your BTA install stay.
 - **Mods didn't load?** Open `BattleTechPortBootstrap.log` beside `BattleTech.exe` and attach it to your bug report with `Player.log`. A good run ends with `done|retargeted=5`.
 - Link BTA won't run while UCU is open, if it finds a `Mods` folder it didn't make, if either install isn't on an NTFS drive in this PC (use the copy launcher then), or, when copying, if the drive is too full. It writes nothing until those checks pass.
-- **On Linux or a Steam Deck**, open a terminal in the `ModSupport` folder and run `bash link-bta.sh` instead (add `--copy` to copy). Then add `WINEDLLOVERRIDES="winhttp=n,b" %command%` to UCU's Steam launch options, or Proton won't start the mod loader. On our Linux test PC the mods load through the links, but BTA on UCU under Proton does not yet reach the main menu; we are looking into it.
+- **On Linux or a Steam Deck**, open a terminal in the `ModSupport` folder and run `bash link-bta.sh` instead (add `--copy` to copy). Then add `WINEDLLOVERRIDES="winhttp=n,b" %command%` to UCU's Steam launch options, or Proton won't start the mod loader. BTA ships ModTek 4.4.x, whose MonoMod could break the game's code under Proton; UCU's mod loader now applies MonoMod's own fix. On our Linux test PC, BTA 20.3 on UCU loads and plays a skirmish under Proton. A BTA career and saves haven't been tested under Proton yet.
 
 ## For mod authors
 
@@ -131,7 +137,7 @@ Places where the port means to match retail but doesn't quite yet. Deliberate ch
 - **Most maps** haven't been compared with retail side by side under the same weather, and decals have been measured only on Central Mountain and Still Valley.
 - **Portraits** read slightly darker than retail, mostly on the shaded side of the face, and one preset's hair tips look cyan.
 - **Memory in long sessions:** Memory use grows during a long session, about 1.5 GB above the original game after three missions and then about 200 MB per mission (around 9 GB after twelve). The original game also grows as you play. Restarting the game returns the memory. We are still working on it.
-- **Linux and Steam Deck (Proton):** Up to 2.1.0-2B, the main menu's animated background showed colour bars (vertical stripes) under Proton, because Proton can't play that video format. 2.1.1-2B converts the menu background and the small video screens on Urban Warfare city maps to a format Proton plays; on one Linux PC the menu video played under Proton, but the Urban Warfare screens have only been checked on Windows. The opening cinematic uses a different video format and plays; the story cutscenes use that same format, so they should play too, but they haven't been checked yet. Proton has only been tested as far as the main menu, on one Linux PC and not on a Steam Deck, and the game needs a working sound system (PulseAudio or PipeWire, which desktops and SteamOS have) or it closes at start-up.
+- **Linux and Steam Deck (Proton):** Up to 2.1.0-2B, the main menu's animated background showed colour bars (vertical stripes) under Proton, because Proton can't play that video format. 2.1.1-2B converts the menu background and the small video screens on Urban Warfare city maps to a format Proton plays; on one Linux PC the menu video played under Proton, but the Urban Warfare screens have only been checked on Windows. The opening cinematic uses a different video format and plays; the story cutscenes use that same format, so they should play too, but they haven't been checked yet. Proton has been tested on one Linux PC (unmodded as far as the main menu, and with BattleTech Advanced through a skirmish), not on a Steam Deck, and the game needs a working sound system (PulseAudio or PipeWire, which desktops and SteamOS have) or it closes at start-up.
 
 ## Visuals and lighting
 
@@ -157,19 +163,25 @@ Small shifts of a few percent in brightness or colour are expected and listed be
 
 Our priorities:
 
-- **Mid-battle saves with mods.** Some mods make saving in the middle of a battle unreliable. We'd like to make it easier to get this working again.
+- **Mid-battle saves with mods.** Some mods make saving in the middle of a battle unreliable. We'd like to make it easier to get this working again with a 'shim' that adjusts the game's behavior on-the-fly when mods encountering these issues are loaded.
 - **Your feedback.** This has been our pet project for the last seven months; now it's up to you to put the 'UC' in this update.
 - **Career and campaign co-op.** Since this is the flagship feature, we'd like to reduce any further barriers to people playing Battletech together!
 - **Direct3D 12.** Still very much a 'maybe' but we'll be exploring the possibilities and ramifications.
 
-## On the Installer and Verifying Source
+## Rights and Licensing
 
-We received some excellent feedback concerning our use of an installer whose source cannot be verified. We are incorporating this feedback and intend to release as much as we can in short order. It's a bit of a highwire act because we'd like our changes to be audit-able, but the thing we're changing is in some cases the HBS retail product and that is not ours to release (which is why the installer just copies retail content from your retail install - we're not distributing it.) Even so, as a public project, this effort is brand new and this is on the top of our list for Things That Need to Be Better, so give us a little bit to see what we can do!
+The source code for the installer and unlock server is licensed under the MIT License; see [installer/LICENSE](installer/LICENSE). This license does not cover BATTLETECH artwork, trademarks, game content, or the UCU game update.
+
+BATTLETECH and its associated content belong to their respective rights holders. UCU is a non-commercial community project operated under Paradox Interactive’s User Generated Content policy and requires a retail copy of BATTLETECH. See Paradox’s [User Agreement](https://legal.paradoxplaza.com/eula?locale=en) for applicable terms.
 
 ## Credits
 
 All of the original assets upon which this project is based come from, and belong to Harebrained Schemes and Paradox Interactive.
 
 Battletech is a registered trademark of Microsoft Gaming and the Topps Company (licensed to Catalyst Game Labs). 
+
+LiAlH4, for gifting a GOG key to the project so we could add GOG support.
+
+UCU was founded and is presently directed by InternetDadCo.
 
 Finally, to Jack, for the idea and a reason to go to the trouble.

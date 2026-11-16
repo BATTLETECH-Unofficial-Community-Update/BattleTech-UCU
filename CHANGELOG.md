@@ -1,5 +1,41 @@
 # Changelog
 
+## 2.1.5-2B (BT-UCU Beta 2.5)
+
+- **GOG support.** UCU now runs on both the GOG and Steam editions of BATTLETECH. On a GOG install,
+  the installer finds your GOG install, then copies the GOG files UCU needs from your
+  GOG folder, including the markers for the DLC you own there. In the game, Flashpoint, Urban Warfare and Heavy Metal
+  follow your GOG ownership, saves go to GOG Galaxy (synced to the cloud when Galaxy is signed in) and achievements go
+  to your GOG account; Steam isn't needed. GOG's own BATTLETECH lists the saves UCU makes there. If you buy a DLC on
+  GOG after installing UCU, run the installer again to repair your UCU folder and it picks the DLC up.
+- **Co-op join stuck on "Receiving the campaign..." with big careers** ([issue #9](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/9)). A joining player asked the host for the
+  campaign again every five seconds and threw away what had already arrived, so a career too big to arrive in five
+  seconds (a BattleTech Advanced career is about 12 MB) never finished loading, and the host stalled each time it
+  rebuilt it. The joining player now keeps the download while it is still arriving. If the campaign arrives but
+  can't be loaded, the joining player now sees a message and returns to the main menu instead of waiting forever.
+- **The installer is now a launcher.** The same window has five tabs: *Home* shows your installed version against the
+  newest release and starts the game; *Install / Update* is the installer; *Mods* turns mod support on or off and links
+  or copies a mod pack you installed for retail BATTLETECH (BattleTech Advanced, RogueTech, or another ModTek pack), so
+  `Link BTA.cmd` is no longer needed; *Settings* picks DirectX 11 or 12 (12 has no benefit yet) and extra launch
+  options; *Tools* verifies the install, opens the log and save-backup folders, and makes a desktop or Start menu
+  shortcut. After installing, the launcher keeps a copy of itself in the install folder as `BattleTech UCU
+  Launcher.exe`, so you no longer need the download to update. RogueTech has not been tested on UCU yet.
+- **Mod packs on Linux and Steam Deck** ([issue #13](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/13)). Under Proton, BattleTech Advanced 20.3 and other packs on ModTek 4.4.x no
+  longer get stuck repeating an error while they load ("ModTek died"). The MonoMod library that ships with ModTek 4.4.x could write
+  broken jumps in the game's code when the memory next to that code was full, which happens with UCU's newer Unity
+  under Proton. UCU's mod loader now applies MonoMod's own fix for this (MonoMod pull request 308, credit to the
+  MonoMod team). With ModTek 4.5.1 or later, which already includes the fix, or without ModTek, it does nothing.
+  Tested under Proton: BattleTech Advanced 20.3 loads and plays a skirmish. On Windows it plays as before. Not yet
+  tested under Proton: a BattleTech Advanced career or loading saves.
+- **Mods that look for the game's popup layer** ([issue #16](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/16)). UCU gave the layer that holds pop-ups a
+  different name from the original game, so a mod that finds it by name got nothing. In LootMagnet's shift-click sale
+  on the salvage screen, that left the item in place after paying its value. The layer now has the original game's
+  name, PopupRoot. The LootMagnet sale itself hasn't been re-tested with the fix yet. In BattleTech Advanced, shift-click
+  selling is off by default and you sell by clicking the item's icon, which already worked on UCU.
+- **Mech Bay tile outlines** ([issue #15](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/15)). In the Mech Bay, the outline around each unit's
+  tile and the frame around the selected tile didn't draw, because the two frame shapes pointed at the wrong data and
+  came out empty. Both are drawn again.
+
 ## 2.1.4-2B (BT-UCU Beta 2.4)
 
 - **Skirmish launch.** Pressing Play on the skirmish setup screen right after the lances fill in could freeze the load:

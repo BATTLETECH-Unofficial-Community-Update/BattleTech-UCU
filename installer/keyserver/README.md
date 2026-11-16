@@ -1,13 +1,16 @@
 # Unlock server
 
-A Cloudflare Worker that unlocks packages made with an unlock server. It unlocks a release two ways:
+A Cloudflare Worker that unlocks packages made with an unlock server. It unlocks a release three ways:
 
 - **Steam (the normal route).** The installer sends a ticket that Steam issued for BATTLETECH. The Worker asks Valve's
   Web API to confirm it. Steam only issues such a ticket to an account that owns the game, and no profile is read, so
   privacy settings don't matter.
+- **GOG install (on its files).** GOG offers no ownership check this server can use, so a GOG install unlocks on its
+  files (the maintainer, 2026-11-15). The installer sends a proof made from the install's fingerprint; the Worker checks it against
+  the `GOG_FINGERPRINTS` secret. Anyone with a copy of GOG's files gets in.
 - **Access code (the manual route).** For anyone Steam can't confirm: the Worker checks the code is valid and not revoked.
 
-Either way it answers with that release's share. Design and reasons: `../docs/keyserver-design.md`.
+Each way it answers with that release's share. Design and reasons: `../docs/keyserver-design.md`.
 
 What's here: `src/worker.js` (the Worker), `schema.sql` (its D1 database), `wrangler.toml` (its settings, no secrets),
 `admin.ps1` (codes, the off switch, the record).
@@ -61,6 +64,15 @@ In `F:\Unity-Tools\ReleaseManager\keyserver`, in PowerShell:
    Get-Content ..\keys\steam-webapi-key.txt | npx wrangler secret put STEAM_WEBAPI_KEY
    ```
 
+6b. Give the Worker the GOG install's fingerprint, for packages packed with *GOG install* set. It's private, like the
+   master secret: anyone who has it can unlock those packages. Without it, GOG owners need an access code.
+
+   ```powershell
+   ..\ReleasePack.exe --fingerprint F:\Games\BATTLETECH | npx wrangler secret put GOG_FINGERPRINTS
+   ```
+
+   For more than one GOG build, put their fingerprints in one value, separated by commas.
+
 7. Deploy. Note the `https://btucu-unlock.<your-subdomain>.workers.dev` address it prints.
 
    ```powershell
@@ -83,6 +95,9 @@ anyone with the BATTLETECH files can install, clear both unlock fields.
 **Adding the Steam route to a server set up before it (2026-11-13):** step 6a, then `.\admin.ps1 init` (adds the `steam`
 table; existing tables are kept), then `npx wrangler deploy`.
 
+**Adding the GOG route to a server set up before it (2026-11-15):** copy the new `src\worker.js` and `admin.ps1` here
+(`build.ps1 -Deploy`), then step 6b, then `npx wrangler deploy`. No new tables.
+
 ## Day to day
 
 | Task | Command |
@@ -103,6 +118,9 @@ table; existing tables are kept), then `npx wrangler deploy`.
 | Switch the Steam route off (codes keep working) | `.\admin.ps1 steam-off "Message players see"` |
 | Switch it back on | `.\admin.ps1 steam-on` |
 | Refuse or allow Family Sharing borrowers | `.\admin.ps1 family deny`, `.\admin.ps1 family allow` (default allow) |
+| GOG route: unlocks and refusals this week | `.\admin.ps1 gog` |
+| Switch the GOG route off (codes keep working) | `.\admin.ps1 gog-off "Message players see"` |
+| Switch it back on | `.\admin.ps1 gog-on` |
 
 - **`new-code`** prints the code once, as `XXXXX-XXXXX-XXXXX-XXXXX`, and adds it to
   `F:\Unity-Tools\ReleaseManager\keys\access-codes.tsv`. The server keeps only a hash of it.
@@ -120,6 +138,8 @@ table; existing tables are kept), then `npx wrangler deploy`.
 | Borrowed copy, with `family deny` | "This copy of BATTLETECH is borrowed through Steam Family Sharing…" |
 | Blocked Steam account | "This Steam account can't unlock releases…" |
 | Steam route off | your message |
+| GOG install the server doesn't accept | "The unlock server didn't accept this GOG install of BATTLETECH…" |
+| GOG route off | your message |
 | Bad or revoked code | "This access code isn't valid, or it was revoked." |
 | Retired release | "This release has been withdrawn." |
 | Closed | your message |
@@ -131,12 +151,13 @@ gates installs and updates only, never play.
 ## Limits and data
 
 **Limits:**
-- 30 unlocks per code, or per Steam account, a day.
+- 30 unlocks per code, or per Steam account, a day. The GOG route has no per-person identity, so no daily cap: the
+  per-IP limit and `gog-off` are its controls.
 - 10 requests per IP address a minute. Cloudflare's rate limiter holds this count in memory; nothing is stored.
 - Valve allows 100,000 Web API calls a day per key.
 
 **Data:** D1 holds the code hashes and names, retired releases, settings, and each unlock attempt (code hash or Steam
-account hash, release, time, accepted or not). A Steam account is stored as SHA-256 of `btucu-steam|<steam id>`, with
+account hash or `gog`, release, time, accepted or not). A Steam account is stored as SHA-256 of `btucu-steam|<steam id>`, with
 the time of its first unlock and whether it was borrowed: no Steam ID, name or profile data. (Anyone who has a Steam ID
 can work out its hash, so this hides IDs from a casual look at the table, not from someone checking a known ID.) No IP
 addresses are stored.
@@ -151,3 +172,5 @@ addresses are stored.
   `STEAM_APP_ID=480`: app 480 (Spacewar) is one every Steam account can run, so tests don't touch BATTLETECH (637090).
 - Point an installer at it with `BattleTechUCUSetup.exe --unlock-url http://127.0.0.1:8787 --code <code>`, or with
   `--steam-app 480` and no code for the Steam route.
+- For the GOG route add `GOG_FINGERPRINTS=<ReleasePack --fingerprint <GOG install>>` to `.dev.vars`; `../test/gog-unlock.ps1`
+  packs a small package with `--gog` and runs the route's cases.

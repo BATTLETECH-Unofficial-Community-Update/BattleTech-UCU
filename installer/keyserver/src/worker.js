@@ -1,11 +1,16 @@
 // Unlock server for BattleTech UCU v3 packages (../../docs/keyserver-design.md).
 //
 // POST /v1/unlock {"release": "<32 hex>", "steam": "<ticket hex>", "steamKind": "webapi"|"session"} -> {"share": "<64 hex>"}
+//             or {"release": "<32 hex>", "gog": "<64 hex>"}
 //             or {"release": "<32 hex>", "code": "<access code>"}
 // Steam route: the installer sends a ticket that Steam issued for BATTLETECH (STEAM_APP_ID), and this server asks Valve's
 // Web API (AuthenticateUserTicket, with the STEAM_WEBAPI_KEY secret) to confirm it. Steam only issues tickets to an account
 // with a licence for the app, and binds each to the app and to STEAM_IDENTITY. No profile is read, so privacy settings
 // don't matter. Codes are the manual route for anyone Steam can't confirm.
+// GOG route (the maintainer, 2026-11-15: GOG installs unlock on their files): GOG offers no ownership ticket a server outside GOG can
+// check, so the installer sends HMAC-SHA256(key = the GOG install's fingerprint, "btucu-gog|" + release id). The
+// GOG_FINGERPRINTS secret lists the accepted fingerprints (hex, comma-separated; `ReleasePack --fingerprint <GOG install>`).
+// The fingerprint never leaves the player's PC, and a proof opens one release only. Anyone with a copy of the files gets in.
 // The share is HMAC-SHA256(MASTER_SECRET, "btucu-share|" + release id); the packer computes the same with the same secret,
 // so no release needs uploading here. D1 holds hashed codes, hashed Steam IDs, retired releases, settings and a record of
 // unlocks. No IP address is stored: the per-IP limit is Cloudflare's rate-limiting binding, held in memory.
@@ -42,6 +47,11 @@ export default {
     if (steam) {
       if (!/^[0-9a-f]{40,8192}$/.test(steam) || steam.length % 2) return json(400, { error: "bad-request" });
       return steamUnlock(env, release, steam, body.steamKind === "session" ? "session" : "webapi");
+    }
+    const gog = String((body && body.gog) || "").toLowerCase();
+    if (gog) {
+      if (!/^[0-9a-f]{64}$/.test(gog)) return json(400, { error: "bad-request" });
+      return gogUnlock(env, release, gog);
     }
     const code = normalize(body && body.code);
     if (code.length !== CODE_LENGTH) return json(400, { error: "bad-request" });
@@ -129,6 +139,51 @@ async function steamUnlock(env, release, ticket, kind) {
   const share = await hmacHex(env.MASTER_SECRET.trim(), "btucu-share|" + release);
   await record(env, key, release, now, 1);
   return json(200, { share });
+}
+
+/** The GOG route: the proof must match one accepted GOG fingerprint, then the open, off-switch and retired checks. */
+async function gogUnlock(env, release, proof) {
+  const settings = await readSettings(env);
+  if (settings.open === "false") {
+    return json(503, { error: "closed", message: settings.closed_message || "Installing is switched off for now." });
+  }
+  const prints = gogFingerprints(env);
+  if (settings.gog === "off" || prints.length === 0) {
+    return json(503, { error: "gog-off", message: settings.gog_message || "Unlocking GOG installs is switched off for now. Enter an access code instead." });
+  }
+  const now = Math.floor(Date.now() / 1000);
+  let match = false;
+  for (const fp of prints) {
+    // Every fingerprint is tried, and compared in constant time, so the answer's timing says nothing about which matched.
+    if (equalHex(await hmacHex(fp, "btucu-gog|" + release), proof)) match = true;
+  }
+  if (!match) {
+    await record(env, "gog", release, now, 0);
+    return json(403, { error: "gog" });
+  }
+  const retired = await env.DB.prepare("SELECT 1 AS r FROM retired WHERE release = ?").bind(release).first();
+  if (retired) {
+    await record(env, "gog", release, now, 0);
+    return json(410, { error: "release" });
+  }
+  const share = await hmacHex(env.MASTER_SECRET.trim(), "btucu-share|" + release);
+  await record(env, "gog", release, now, 1);
+  return json(200, { share });
+}
+
+/** GOG_FINGERPRINTS: 64-hex fingerprints, comma- or space-separated. Anything else in it is ignored. */
+function gogFingerprints(env) {
+  return String(env.GOG_FINGERPRINTS || "")
+    .toLowerCase()
+    .split(/[\s,]+/)
+    .filter((f) => /^[0-9a-f]{64}$/.test(f));
+}
+
+function equalHex(a, b) {
+  if (a.length !== b.length) return false;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
 }
 
 /** Upper case, letters and digits only: dashes, spaces and anything else are ignored. Same rule as the installer. */

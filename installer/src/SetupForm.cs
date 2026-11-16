@@ -1,4 +1,5 @@
-// The installer window: choose the BATTLETECH folder and a destination, then install.
+// The installer and launcher window. The Install tab (this file) chooses the BATTLETECH folder and a destination, then
+// installs or updates; Home, Mods, Settings and Tools (LauncherTabs.cs) manage the copy that is installed.
 using System;
 using System.Diagnostics;
 using System.Drawing;
@@ -42,27 +43,27 @@ namespace ReleaseGate
         }
     }
 
-    sealed class SetupForm : Form
+    sealed partial class SetupForm : Form
     {
-        public const string Title = "BattleTech: Unofficial Community Update (UCU) Installer";
+        public const string Title = "BattleTech: Unofficial Community Update (UCU) Launcher";
         static readonly Color Good = Color.FromArgb(0, 110, 50), Bad = Color.FromArgb(170, 30, 30);
 
         readonly TextBox _retail = new TextBox { Name = "RetailPath", AccessibleName = "BATTLETECH folder", Dock = DockStyle.Fill };
         readonly TextBox _dest = new TextBox { Name = "DestPath", AccessibleName = "Install to", Dock = DockStyle.Fill };
         readonly Label _retailNote = Note("RetailNote");
         readonly TextBox _code = new TextBox { Name = "AccessCode", AccessibleName = "Access code", Dock = DockStyle.Fill, CharacterCasing = CharacterCasing.Upper };
-        readonly Label _codeCaption = new Label { Text = "Access code (only if you were given one; without it, Steam confirms your copy)", AutoSize = true, Margin = new Padding(3, 0, 3, 3) };
+        readonly Label _codeCaption = new Label { Text = "Access code (only if you were given one: a Steam or GOG copy unlocks without one)", AutoSize = true, Margin = new Padding(3, 0, 3, 3) };
         readonly Label _codeNote = Note("CodeNote");
         readonly Label _destNote = Note("DestNote");
         readonly CheckBox _mods = new CheckBox { Name = "ModSupport", Text = "Mod support: load ModTek mods from the Mods folder", AutoSize = true, Checked = true, Margin = new Padding(3, 0, 3, 8) };
         readonly ProgressBar _bar = new ProgressBar { Name = "Progress", Dock = DockStyle.Fill, Maximum = 1000 };
         readonly Label _status = Note("Status");
-        readonly Button _go = new Button { Name = "Install", Text = "Install", AutoSize = true, Enabled = false, MinimumSize = new Size(110, 0) };
-        readonly Button _close = new Button { Name = "Close", Text = "Close", AutoSize = true, MinimumSize = new Size(110, 0) };
-        readonly Button _updates = new Button { Name = "CheckUpdates", Text = "Check for updates", AutoSize = true };
-        readonly Button _verify = new Button { Name = "VerifyInstall", Text = "Verify install", AutoSize = true, Visible = false };
-        readonly Button _browseRetail = new Button { Name = "BrowseRetail", Text = "Browse...", AutoSize = true };
-        readonly Button _browseDest = new Button { Name = "BrowseDest", Text = "Browse...", AutoSize = true };
+        readonly Button _go = new UcuButton(UcuButton.Look.Primary) { Name = "Install", Text = "Install", Enabled = false };
+        readonly Button _close = new UcuButton { Name = "Close", Text = "Close" };
+        readonly Button _updates = new UcuButton { Name = "CheckUpdates", Text = "Check for updates" };
+        readonly Button _verify = new UcuButton { Name = "VerifyInstall", Text = "Verify install", Visible = false };
+        readonly Button _browseRetail = new UcuButton(UcuButton.Look.Compact) { Name = "BrowseRetail", Text = "Browse..." };
+        readonly Button _browseDest = new UcuButton(UcuButton.Look.Compact) { Name = "BrowseDest", Text = "Browse..." };
         readonly System.Windows.Forms.Timer _settle = new System.Windows.Forms.Timer { Interval = 350 };
         readonly System.Windows.Forms.Timer _tick = new System.Windows.Forms.Timer { Interval = 150 };
         readonly System.Windows.Forms.Timer _planSettle = new System.Windows.Forms.Timer { Interval = 400 };
@@ -96,8 +97,11 @@ namespace ReleaseGate
             return dest;
         }
 
-        /// <summary>remote: a release source to install from (Remote.Open), or null for the package beside the installer.</summary>
-        public SetupForm(string detected, string remote)
+        /// <summary>
+        /// remote: a release source to install from (Remote.Open), or null for the package beside the installer. home: the
+        /// install this exe sits in (Launcher.InstallBeside), whose launcher reads a release only when asked.
+        /// </summary>
+        public SetupForm(string detected, string remote, string home = null)
         {
             SuspendLayout();
             Text = Title;
@@ -108,10 +112,10 @@ namespace ReleaseGate
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            AutoSize = true;
-            AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            // The tabs set the size: their width, and the banner's height at that width above their height (Load below).
+            ClientSize = new Size(660, 640);
 
-            var t = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Dock = DockStyle.Fill, Width = 600, Padding = new Padding(14) };
+            var t = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Dock = DockStyle.Top, Width = 600, Padding = new Padding(14) };
             t.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 500));
             t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
@@ -120,7 +124,7 @@ namespace ReleaseGate
                 AutoSize = true,
                 MaximumSize = new Size(590, 0),
                 Margin = new Padding(3, 0, 3, 12),
-                Text = "This installs BattleTech: Unofficial Community Update (UCU). It needs your own copy of BATTLETECH, which stays unchanged.",
+                Text = "This installs or updates BattleTech: Unofficial Community Update (UCU). It needs your own copy of BATTLETECH, which stays unchanged.",
             };
             t.Controls.Add(intro);
             t.SetColumnSpan(intro, 2);
@@ -146,14 +150,16 @@ namespace ReleaseGate
             buttons.Controls.Add(_verify);
             t.Controls.Add(buttons);
             t.SetColumnSpan(buttons, 2);
-            Controls.Add(t);
-            Controls.Add(new Banner());
+            Controls.Add(BuildTabs(t));
+            var banner = new Banner();
+            Controls.Add(banner);
+            Load += (s, e) => ClientSize = new Size(ClientSize.Width, banner.Height + _tabs.Height);
             AcceptButton = _go;
 
             _retail.TextChanged += (s, e) => QueueCheck();
             _code.TextChanged += (s, e) => QueueCheck();
             // Only typing (box focused) or Browse counts as the player's choice: Wine's WinForms raises TextChanged on its own.
-            _dest.TextChanged += (s, e) => { if (!_settingDest && _dest.Focused) _destEdited = true; ShowDest(); ShowVerify(); _mods.Checked = Installer.ModsWanted(_dest.Text.Trim().Trim('"')); };
+            _dest.TextChanged += (s, e) => { if (!_settingDest && _dest.Focused) _destEdited = true; ShowDest(); ShowVerify(); _mods.Checked = Installer.ModsWanted(_dest.Text.Trim().Trim('"')); QueueHome(); };
             _verify.Click += (s, e) => StartVerify();
             _settle.Tick += (s, e) => { _settle.Stop(); RunCheck(); };
             _tick.Tick += (s, e) => ShowProgress();
@@ -175,6 +181,7 @@ namespace ReleaseGate
                 _opening = true;
                 Shown += (s, e) => OpenRemote(remote);
             }
+            StartLauncher(home);
             ResumeLayout(true);
         }
 
@@ -228,11 +235,18 @@ namespace ReleaseGate
                 Show(_retailNote, "Waiting for the release...", SystemColors.ControlText);
                 return;
             }
+            // A launcher in its install has no package until a release is read: nothing to check BATTLETECH against yet.
+            if (!Installer.HasPackage)
+            {
+                Show(_retailNote, "Use Check for updates to update or repair the install; the release is read online.", SystemColors.ControlText);
+                ShowDest();
+                return;
+            }
             int id = ++_checkId;
             string typed = _retail.Text;
             Unlock.Code = _code.Text;
             Show(_retailNote, "Checking...", SystemColors.ControlText);
-            if (_code.Visible && Unlock.Normalize(_code.Text).Length == 0) Show(_codeNote, "Confirming your copy with Steam...", SystemColors.ControlText);
+            if (_code.Visible && Unlock.Normalize(_code.Text).Length == 0 && Gate.StoreOf(Installer.TidyRetail(typed)) == Gate.Steam) Show(_codeNote, "Confirming your copy with Steam...", SystemColors.ControlText);
             Task.Run(() => Installer.Check(typed)).ContinueWith(t =>
             {
                 if (id != _checkId || IsDisposed) return;
@@ -251,6 +265,7 @@ namespace ReleaseGate
                 {
                     Show(_retailNote, "BATTLETECH found.", Good);
                     if (_code.Visible && Unlock.LastRoute == "steam") Show(_codeNote, "Steam confirmed that you own BATTLETECH.", Good);
+                    else if (_code.Visible && Unlock.LastRoute == "gog") Show(_codeNote, "The unlock server accepted this GOG install of BATTLETECH.", Good);
                     else if (_code.Visible)
                     {
                         Show(_codeNote, "Access code accepted.", Good);
@@ -368,6 +383,7 @@ namespace ReleaseGate
                 _updates.Visible = false;
                 Show(_status, "Release " + p.Version + " found online.", Good);
                 QueueCheck();
+                QueueHome();
             }, TaskScheduler.FromCurrentSynchronizationContext());
         }
 
@@ -411,9 +427,7 @@ namespace ReleaseGate
         {
             if (_installed)
             {
-                string exe = Path.Combine(DestFull(), "BattleTech.exe");
-                Process.Start(new ProcessStartInfo(exe) { WorkingDirectory = DestFull(), UseShellExecute = true });
-                Close();
+                Play();
                 return;
             }
             string dest = DestFull();
@@ -437,6 +451,7 @@ namespace ReleaseGate
         {
             _installing = true;
             SetInputs(false);
+            SetLauncherInputs(false);
             _close.Text = "Cancel";
             _progress = new InstallProgress { Total = _check.Need };
             _stop = new CancellationTokenSource();
@@ -464,6 +479,8 @@ namespace ReleaseGate
                 {
                     string m = Installer.ApplyMods(dest, mods);
                     if (m != null) message += " " + m;
+                    string l = Launcher.PlaceCopy(dest);
+                    if (l != null) message += " " + l;
                     _phase = "Backing up saves";
                     string b = SaveBackup.Run();
                     if (b != null) message += " " + b;
@@ -480,18 +497,20 @@ namespace ReleaseGate
                     _installed = true;
                     _bar.Value = _bar.Maximum;
                     if (remote != null) text = "Release " + remote.Version + ". " + text;
-                    Show(_status, text + " Steam must be running when you play.", Good);
+                    Show(_status, text + (_check != null && _check.Store == Gate.Gog ? "" : " Steam must be running when you play."), Good);
                     _go.Text = "Start game";
                     _go.Enabled = true;
                     _close.Text = "Close";
                     _verify.Enabled = true;
                     ShowVerify();
+                    Installed(dest);
                 }
                 else
                 {
                     Show(_status, text, r == InstallResult.Cancelled ? SystemColors.ControlText : Bad);
                     _close.Text = "Close";
                     SetInputs(true);
+                    SetLauncherInputs(true);
                     ShowDest();
                 }
             }, TaskScheduler.FromCurrentSynchronizationContext());
@@ -518,6 +537,7 @@ namespace ReleaseGate
             string dest = DestFull();
             _installing = true;
             SetInputs(false);
+            SetLauncherInputs(false);
             _close.Text = "Cancel";
             _progress = new InstallProgress();
             _stop = new CancellationTokenSource();
@@ -538,6 +558,7 @@ namespace ReleaseGate
                 SetInputs(true);
                 if (_installed) _go.Enabled = true; else ShowDest();
                 ShowVerify();
+                SetLauncherInputs(true);
             }, TaskScheduler.FromCurrentSynchronizationContext());
         }
 

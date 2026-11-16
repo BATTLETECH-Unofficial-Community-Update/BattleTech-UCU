@@ -2,7 +2,8 @@
 
 Status: built 2026-11-13 and tested against a local Worker (Testing plan, below); deployed to Cloudflare the same day
 (codes only, until the Steam route is deployed). Players who own BATTLETECH on Steam unlock through Steam with no code
-(*Steam route*); the maintainer's own access codes (no itch keys) are the manual route. A package needs an access code when the Release Manager's two unlock fields are set;
+(*Steam route*); GOG installs unlock on their files with no code (*GOG route*, 2026-11-15); the maintainer's own access codes (no
+itch keys) are the manual route. A package needs an access code when the Release Manager's two unlock fields are set;
 with them empty it packs v2 as before. Packages up to 10A (vault v2) are unaffected. Setup and use: `../keyserver/README.md`.
 
 ## Goal
@@ -67,6 +68,8 @@ NeedsNewerInstaller path), so an old installer never misreads a v3 vault.
 |---|---|---|
 | unlocked | 200 | `{ "share": "<hex>" }` |
 | unknown or revoked code | 403 | `{ "error": "code" }` |
+| GOG proof matches no accepted fingerprint | 403 | `{ "error": "gog" }` |
+| GOG route off, or no `GOG_FINGERPRINTS` | 503 | `{ "error": "gog-off", "message": "..." }` |
 | release retired | 410 | `{ "error": "release" }` |
 | server switched off | 503 | `{ "error": "closed", "message": "..." }` |
 | too many tries | 429 | `{ "error": "slow-down" }` |
@@ -164,6 +167,9 @@ Agents write and test the Worker locally. They don't create the account, log in 
 4. **Steam ownership is the normal route; codes are the exception** (the maintainer, 2026-11-13): GitHub releases are public, and
    players can't be asked to make their Steam profiles public. See *Steam route*.
 5. **Family Sharing borrowers:** allowed by default; `admin.ps1 family deny` refuses them.
+6. **GOG installs unlock on their files** (the maintainer, 2026-11-15: "Let's do 4 (GOG files alone)"; SCOPE.md extension 4,
+   b783935a5). GOG offers no ownership check a server outside GOG can use without HBS/Paradox's GOG secrets, so a copy
+   of GOG's files is enough. See *GOG route*.
 
 ## Steam route (2026-11-13)
 
@@ -197,6 +203,33 @@ Agents write and test the Worker locally. They don't create the account, log in 
 
 **Release Manager:** before a GitHub upload, it sends the live server a dummy ticket. The dummy must reach Valve and be
 refused there, which shows the route is on and the key works. Before an itch.io push it only warns.
+
+## GOG route (2026-11-15)
+
+**What the installer sends:** for a GOG install (`goggame-1482783682.info` in the folder) with no code entered, route
+`gog`: `{ "release": "<id>", "gog": "<64 hex>", "installer": "<version>" }`, where `gog` is HMAC-SHA256 keyed with the
+install's fingerprint (`Gate.Fingerprint`, the same one the vault's slots use) over `btucu-gog|` + the release id. The
+fingerprint never leaves the PC, and a proof opens one release only.
+
+**How the server checks it:** the Worker secret `GOG_FINGERPRINTS` lists the accepted fingerprints (hex, comma or space
+separated; the value is `ReleasePack --fingerprint <GOG install>`). It recomputes the HMAC for every fingerprint and
+compares each in constant time. Then: `open`, the `gog` off switch (`admin.ps1 gog-off [<message>]`, `gog-on`; also off
+while the secret is unset), retired releases. Each attempt is recorded under the key `gog`; `admin.ps1 gog` counts them.
+
+**Why the secret is private:** a fingerprint opens its slot in every package that accepts that GOG build, so it is kept
+like the master secret: only the Worker and the packer's own reads of the GOG install know it.
+
+**Limits:**
+- Anyone with a copy of GOG's files gets in. That is the bound the maintainer accepted.
+- There's no per-user identity, so no per-user daily cap; Cloudflare's per-IP limit still applies, and `gog-off` stops
+  the route without touching Steam or codes.
+- A different GOG build has a different fingerprint: the installer refuses it before asking (the package has no slot
+  for it), and adding it means a repack plus its fingerprint in the secret.
+
+**Release Manager and ReleasePublish:** for a package with a GOG section (`ucu-manifest-gog.tsv`), `CheckServer` also
+checks the GOG route. With a GOG install on that PC, it sends a real proof and expects the release's share, which shows
+the secret holds that fingerprint. Without one, it sends a dummy proof and expects 403 `gog`, which shows only that the
+route is on. A GitHub upload is refused on a problem; an itch.io push only warns.
 
 ## Test record (2026-11-13)
 
@@ -254,3 +287,18 @@ Nothing was written for any refused case.
 - The Steam route as app 637090. The lease was held; the first real unlock covers it.
 - A Family Sharing borrower.
 - A full-size repack. Agents don't cut packages, so the maintainer's first v3 pack and its test install are the full-size test.
+
+## Test record: GOG route (2026-11-15)
+
+`test/gog-unlock.ps1` against `wrangler dev --local` (wrangler 4.161.0) from a copy of `keyserver/` in a scratch folder,
+with `GOG_FINGERPRINTS` holding a random fingerprint plus the GOG 1.9.1 install's, and a v3 package packed with
+`--gog`. All 13 checks passed:
+- A GOG install with no code installed, with the Galaxy natives; a Steam install with a code installed without them.
+- `gog-off` refused with its message, and a code still installed. A retired release got "withdrawn", and `close` its
+  message.
+- `GogRouteProblem`: a real proof passed and its share matched the master secret's; a dummy proof passed; an unknown
+  fingerprint named `GOG_FINGERPRINTS`; the route switched off said so.
+- `admin.ps1 log` and `admin.ps1 gog` listed the GOG attempts.
+- A dummy proof by hand got 403 `gog`, and a malformed one 400.
+
+Not run: the deployed Worker, which needs the maintainer's `GOG_FINGERPRINTS` secret and deploy (`../keyserver/README.md`).

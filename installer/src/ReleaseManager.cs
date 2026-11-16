@@ -130,87 +130,9 @@ namespace ReleaseGate
             return p;
         }
 
-        /// <summary>Reads the port version and BuildNumber from version.json, which the build compiles into resources.assets. The port
-        /// version is PortVersion (patch 107, D1: ProductVersion went back to retail's 1.9.1); a player built before 107 has only
-        /// ProductVersion, which then held the port version.</summary>
-        public static string DetectVersion(string player)
-        {
-            string path = Path.Combine(player, "BattleTech_Data", "resources.assets");
-            if (!File.Exists(path)) return null;
-            byte[] needle = Encoding.ASCII.GetBytes("\"BuildNumber\"");
-            using (var f = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1 << 20, FileOptions.SequentialScan))
-            {
-                var buf = new byte[4 << 20];
-                int keep = 0;
-                long baseAt = 0;
-                while (true)
-                {
-                    int n = f.Read(buf, keep, buf.Length - keep);
-                    if (n <= 0) return null;
-                    int len = keep + n;
-                    int at = Find(buf, len, needle);
-                    if (at >= 0)
-                    {
-                        f.Position = Math.Max(0, baseAt + at - 1024);
-                        var win = new byte[2048];
-                        int got = f.Read(win, 0, win.Length);
-                        string text = Encoding.ASCII.GetString(win, 0, got);
-                        Match pv = Regex.Match(text, "\"PortVersion\"\\s*:\\s*\"([^\"]+)\""), bn = Regex.Match(text, "\"BuildNumber\"\\s*:\\s*\"([^\"]+)\"");
-                        if (!pv.Success) pv = Regex.Match(text, "\"ProductVersion\"\\s*:\\s*\"([^\"]+)\"");
-                        if (!bn.Success) return null;
-                        return (pv.Success ? pv.Groups[1].Value + "-" : "") + bn.Groups[1].Value;
-                    }
-                    keep = Math.Min(needle.Length - 1, len);
-                    Buffer.BlockCopy(buf, len - keep, buf, 0, keep);
-                    baseAt += len - keep;
-                }
-            }
-        }
+        public static string DetectVersion(string player) { return PlayerVersion.DetectVersion(player); }
 
-        static int Find(byte[] b, int len, byte[] needle)
-        {
-            for (int i = 0; i + needle.Length <= len; i++)
-            {
-                if (b[i] != needle[0]) continue;
-                int k = 1;
-                while (k < needle.Length && b[i + k] == needle[k]) k++;
-                if (k == needle.Length) return i;
-            }
-            return -1;
-        }
-
-        /// <summary>
-        /// Patch 103: a player may take its build label from BattleTech_Data\build-label.txt (tools/set-player-label.ps1 writes
-        /// it) instead of the BuildNumber compiled into resources.assets. Same rule as the player's VersionInfo: the file's text,
-        /// trimmed, must be &lt;number&gt;&lt;letter&gt; (e.g. 11A). A player without patch 103 ignores the file, and so does this.
-        /// Returns the version with its label replaced, or unchanged.
-        /// </summary>
-        public static string WithFileLabel(string player, string version)
-        {
-            string label = FileLabel(player);
-            if (label == null) return version;
-            if (version == null) return label;
-            int dash = version.LastIndexOf('-');
-            return dash < 0 ? label : version.Substring(0, dash + 1) + label;
-        }
-
-        static string FileLabel(string player)
-        {
-            string file = Path.Combine(player, "BattleTech_Data", "build-label.txt");
-            string dll = Path.Combine(player, "BattleTech_Data", "Managed", "Assembly-CSharp.dll");
-            try
-            {
-                if (!File.Exists(file) || !File.Exists(dll)) return null;
-                string label = File.ReadAllText(file).Trim();
-                if (!Regex.IsMatch(label, "^[0-9]{1,4}[A-Z]$")) return null;
-                byte[] b = File.ReadAllBytes(dll), w = Encoding.Unicode.GetBytes("build-label.txt");
-                return Find(b, b.Length, w) >= 0 ? label : null;
-            }
-            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
-            {
-                return null;
-            }
-        }
+        public static string WithFileLabel(string player, string version) { return PlayerVersion.WithFileLabel(player, version); }
 
         public static string FindButler()
         {
@@ -268,7 +190,7 @@ namespace ReleaseGate
         readonly string _logFile = Path.Combine(Settings.Folder, "log-" + DateTime.Now.ToString("yyyy-MM-dd") + ".txt");
 
         // Package tab
-        readonly TextBox _player = Box("PlayerPath"), _version = Box("Version"), _retail = Box("RetailPath"), _key = Box("KeyFile"),
+        readonly TextBox _player = Box("PlayerPath"), _version = Box("Version"), _retail = Box("RetailPath"), _gog = Box("GogPath"), _key = Box("KeyFile"),
             _extra = Box("ExtraFingerprints"), _package = Box("PackagePath"), _testDest = Box("TestInstallPath");
         readonly Label _playerNote = Note(), _retailNote = Note(), _keyNote = Note(), _packageNote = Note(), _testNote = Note();
         readonly Button _addAppId = Btn("Add steam_appid.txt"), _pack = Btn("Pack"), _fingerprint = Btn("Add install..."),
@@ -453,6 +375,7 @@ namespace ReleaseGate
             Heading(t, "Packing");
             Row(t, "BATTLETECH install", _retail, Browse(_retail, true, "Choose the retail BATTLETECH folder"));
             Wide(t, _retailNote);
+            Row(t, "GOG install (optional)", _gog, Browse(_gog, true, "Choose a GOG BATTLETECH folder: the package then also installs from GOG"));
             Row(t, "Content key file", _key, Browse(_key, false, "Choose the content key file (created on first pack)"));
             Wide(t, _keyNote);
             Row(t, "Extra fingerprints", _extra, _fingerprint);
@@ -557,7 +480,8 @@ namespace ReleaseGate
         void LoadSettings()
         {
             _player.Text = _settings.Get("player", "");
-            _retail.Text = _settings.Get("retail", Gate.FindRetail() ?? "");
+            _retail.Text = _settings.Get("retail", Gate.FindSteam() ?? "");
+            _gog.Text = _settings.Get("gog", Gate.FindGog() ?? "");
             _key.Text = _settings.Get("key", "");
             _extra.Text = _settings.Get("extra", "");
             _package.Text = _settings.Get("package", "");
@@ -582,7 +506,7 @@ namespace ReleaseGate
 
         void SaveSettings()
         {
-            _settings.Set("player", _player.Text); _settings.Set("retail", _retail.Text); _settings.Set("key", _key.Text);
+            _settings.Set("player", _player.Text); _settings.Set("retail", _retail.Text); _settings.Set("gog", _gog.Text); _settings.Set("key", _key.Text);
             _settings.Set("master", _master.Text); _settings.Set("unlockUrl", _unlockUrl.Text);
             _settings.Set("extra", _extra.Text); _settings.Set("package", Typed(_package)); _settings.Set("testDest", Typed(_testDest));
             _settings.Set("butler", _butler.Text); _settings.Set("butlerKey", _butlerKey.Text); _settings.Set("itchTarget", _itchTarget.Text);
@@ -837,6 +761,13 @@ namespace ReleaseGate
             catch (IOException) { return new List<string>(); }
         }
 
+        /// <summary>The release-notes sentence for the GOG manifest, or "" when the package takes no GOG installs.</summary>
+        internal static string GogManifestLine(string assets)
+        {
+            string f = Path.Combine(assets, PublicManifest.GogFileName);
+            return File.Exists(f) ? " GOG installs: " + PublicManifest.GogFileName + ", SHA-256 " + PublicManifest.Sha256Of(File.ReadAllBytes(f)) + "." : "";
+        }
+
         internal static List<string> AssetFiles(string dir)
         {
             // Upload order. The installer only takes a release that has package.vault, so it goes last: a release whose
@@ -844,6 +775,7 @@ namespace ReleaseGate
             var l = AssetParts(dir);
             l.Add(Path.Combine(dir, Remote.InstallerName));
             l.Add(Path.Combine(dir, PublicManifest.FileName));
+            l.Add(Path.Combine(dir, PublicManifest.GogFileName));
             l.Add(Path.Combine(dir, VerifyScript));
             l.Add(Path.Combine(dir, Gate.VaultName));
             return l.Where(File.Exists).ToList();
@@ -946,6 +878,7 @@ namespace ReleaseGate
         void DoPack()
         {
             string player = Path.GetFullPath(_player.Text.Trim()), retail = Installer.TidyRetail(_retail.Text), output = Path.GetFullPath(_package.Text.Trim()), keyFile = _key.Text.Trim();
+            string gog = Installer.TidyRetail(_gog.Text);
             string problem;
             List<byte[]> extra = ExtraFingerprints(out problem);
             if (_playerInfo.Unexpected.Count > 0 &&
@@ -959,7 +892,7 @@ namespace ReleaseGate
                 {
                     byte[] key = Pack.LoadKey(keyFile, output, Log);
                     byte[] master = masterFile.Length == 0 ? null : Pack.LoadMaster(masterFile, output);
-                    return Pack.Run(player, retail, output, key, extra, progress, token, master, master == null ? null : unlockUrl).Summary;
+                    return Pack.Run(player, retail, output, key, extra, progress, token, master, master == null ? null : unlockUrl, null, gog.Length == 0 ? null : gog).Summary;
                 }
                 catch (Exception failed)
                 {
@@ -1082,6 +1015,20 @@ namespace ReleaseGate
             else if (requireSteam)
                 throw new IOException("The unlock server can't confirm Steam owners: " + steam + ". Players downloading from GitHub have no code, so nothing was pushed.");
             else log("Warning: the unlock server can't confirm Steam owners: " + steam + ". Only players with an access code can install.");
+            if (!File.Exists(Path.Combine(dir, PublicManifest.GogFileName))) return;
+            // A package with a GOG section: GOG owners unlock on their install's files. With a GOG install on this PC, a real
+            // proof checks that the server holds its fingerprint; without one, a dummy proof checks only that the route is on.
+            string gogDir = Gate.FindGog();
+            byte[] gogPrint = null;
+            if (gogDir != null)
+                try { gogPrint = Gate.Fingerprint(gogDir); }
+                catch (IOException) { gogDir = null; }
+            string gog = Unlock.GogRouteProblem(Unlock.UrlOverride ?? lk.Url, lk, gogPrint, want);
+            if (gog == null) log(gogDir != null ? "Its GOG route accepts the GOG install at " + gogDir + ": players who own BATTLETECH on GOG need no code."
+                : "Its GOG route is on. No GOG install on this PC, so its GOG_FINGERPRINTS weren't checked against one.");
+            else if (requireSteam)
+                throw new IOException("The unlock server can't unlock GOG installs: " + gog + ". Players downloading from GitHub have no code, so nothing was pushed.");
+            else log("Warning: the unlock server can't unlock GOG installs: " + gog + ". GOG owners need an access code.");
         }
 
         // Every player runs as Steam app 637090, so a test boot collides with an agent's player leg. The project's lease file
@@ -1273,8 +1220,8 @@ namespace ReleaseGate
                 File.Copy(setup, Path.Combine(outDir, "BattleTechUCUSetup.exe"));
                 File.Copy(Path.Combine(package, Gate.VaultName), Path.Combine(outDir, Gate.VaultName));
                 // The public manifest, and the script that checks an install against it, go up in the clear.
-                if (File.Exists(Path.Combine(package, PublicManifest.FileName)))
-                    File.Copy(Path.Combine(package, PublicManifest.FileName), Path.Combine(outDir, PublicManifest.FileName));
+                foreach (string m in new[] { PublicManifest.FileName, PublicManifest.GogFileName })
+                    if (File.Exists(Path.Combine(package, m))) File.Copy(Path.Combine(package, m), Path.Combine(outDir, m));
                 string verify = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, VerifyScript);
                 if (File.Exists(verify)) File.Copy(verify, Path.Combine(outDir, VerifyScript));
                 List<string> parts = Volumes.WriteParts(package, outDir, label, partBytes, n => Interlocked.Add(ref done, n), token);
@@ -1354,7 +1301,7 @@ namespace ReleaseGate
             // Main release: the installer only, so its page shows players the one file they need.
             List<string> files = AssetFiles(assets);
             // Main release: the installer, plus the public manifest and verify.ps1 so anyone can see what the release installs.
-            var exeOnly = files.Where(f => new[] { Remote.InstallerName, PublicManifest.FileName, VerifyScript }
+            var exeOnly = files.Where(f => new[] { Remote.InstallerName, PublicManifest.FileName, PublicManifest.GogFileName, VerifyScript }
                 .Contains(Path.GetFileName(f), StringComparer.OrdinalIgnoreCase)).ToList();
             string manifestFile = Path.Combine(assets, PublicManifest.FileName);
             string manifestLine = null;
@@ -1364,6 +1311,7 @@ namespace ReleaseGate
             else if (MessageBox.Show(this, "This package has no public manifest (" + PublicManifest.FileName + "): it was packed before manifests existed. " +
                     "Pack it again to publish one. Upload without it?", Title, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
                 return;
+            if (manifestLine != null) manifestLine += GogManifestLine(assets);
             if (manifestLine != null && !body.Contains(manifestLine)) body = (body.TrimEnd() + "\n\n" + manifestLine).TrimStart();
             long total = files.Sum(f => new FileInfo(f).Length) + exeOnly.Sum(f => new FileInfo(f).Length);
             if (MessageBox.Show(this, string.Format("Upload {0} files, {1}, to {2} and the installer to {3}, under tag {4}{5}?\n\nFiles already uploaded at the same size are skipped.",

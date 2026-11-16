@@ -18,9 +18,13 @@ The installer never changes that copy.
 
    It checks every file's hash as it writes it.
 
-Nothing is written outside the install folder, apart from an accepted access code, which is kept in
-`%APPDATA%\BattleTechUCU\access.txt`. The installer adds no registry entries, shortcuts or uninstaller. To uninstall,
-delete the install folder.
+The installer is also the launcher. After installing it keeps a copy of itself in the install folder as
+`BattleTech UCU Launcher.exe`, which shows the installed version and the newest release, starts the game, turns mod
+support on or off, links a mod pack (BTA, RogueTech or another ModTek pack), and holds a few settings and tools.
+
+Nothing is written outside the install folder, apart from an accepted access code and the launcher's settings, which are
+kept in `%APPDATA%\BattleTechUCU\` (`access.txt`, `launcher.ini`). The installer adds no registry entries or uninstaller,
+and makes desktop or Start menu shortcuts only when you ask on its Tools tab. To uninstall, delete the install folder.
 
 ## Checking what you downloaded and installed
 

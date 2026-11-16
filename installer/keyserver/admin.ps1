@@ -11,9 +11,11 @@
 #   admin.ps1 steam-block <steam id>   that Steam account (64-bit id, 7656...) can't unlock   admin.ps1 steam-unblock <id>
 #   admin.ps1 steam-off [<message>]    switches the Steam route off (codes still work)       admin.ps1 steam-on
 #   admin.ps1 family allow|deny        whether Family Sharing borrowers may unlock (default allow)
+#   admin.ps1 gog                      GOG route: unlocks and refusals this week
+#   admin.ps1 gog-off [<message>]      switches the GOG route off (codes still work)         admin.ps1 gog-on
 # -Local works on the database `npx wrangler dev` uses, for tests. Run from any folder; wrangler runs in this one.
 param(
-    [Parameter(Mandatory = $true, Position = 0)][ValidateSet('init', 'new-code', 'revoke', 'restore', 'codes', 'log', 'retire', 'unretire', 'close', 'open', 'status', 'steam', 'steam-block', 'steam-unblock', 'steam-off', 'steam-on', 'family')][string]$Command,
+    [Parameter(Mandatory = $true, Position = 0)][ValidateSet('init', 'new-code', 'revoke', 'restore', 'codes', 'log', 'retire', 'unretire', 'close', 'open', 'status', 'steam', 'steam-block', 'steam-unblock', 'steam-off', 'steam-on', 'family', 'gog', 'gog-off', 'gog-on')][string]$Command,
     [Parameter(Position = 1)][string]$Arg,
     [switch]$Local,
     [string]$Keys = 'F:\Unity-Tools\ReleaseManager\keys'
@@ -94,7 +96,7 @@ switch ($Command) {
     }
     'log' {
         $filter = if ($Arg) { "WHERE c.name = $(Sql $Arg)" } else { '' }
-        D1 "SELECT datetime(u.at, 'unixepoch') AS at, COALESCE(c.name, CASE WHEN u.code_hash LIKE 'steam:%' THEN 'steam ' || substr(u.code_hash, 7, 8) ELSE '(unknown code)' END) AS name, u.release, u.ok FROM unlocks u LEFT JOIN codes c ON c.hash = u.code_hash $filter ORDER BY u.at DESC LIMIT 50" | Format-Table
+        D1 "SELECT datetime(u.at, 'unixepoch') AS at, COALESCE(c.name, CASE WHEN u.code_hash LIKE 'steam:%' THEN 'steam ' || substr(u.code_hash, 7, 8) WHEN u.code_hash = 'gog' THEN 'gog' ELSE '(unknown code)' END) AS name, u.release, u.ok FROM unlocks u LEFT JOIN codes c ON c.hash = u.code_hash $filter ORDER BY u.at DESC LIMIT 50" | Format-Table
     }
     'retire' { NeedArg 'a release id'; D1 "INSERT OR REPLACE INTO retired (release, at) VALUES ($(Sql $Arg.ToLowerInvariant()), $now)" | Out-Null; "retired $Arg" }
     'unretire' { NeedArg 'a release id'; D1 "DELETE FROM retired WHERE release = $(Sql $Arg.ToLowerInvariant())" | Out-Null; "unretired $Arg" }
@@ -123,5 +125,16 @@ switch ($Command) {
         D1 "INSERT OR REPLACE INTO settings (key, value) VALUES ('family_sharing', $(Sql $Arg))" | Out-Null
         "family sharing: $Arg"
     }
+    'gog' {
+        $week = $now - 7 * 86400
+        D1 "SELECT (SELECT COUNT(*) FROM unlocks WHERE code_hash = 'gog' AND ok = 1 AND at > $week) AS unlocks_7d, (SELECT COUNT(*) FROM unlocks WHERE code_hash = 'gog' AND ok = 0 AND at > $week) AS refused_7d" | Format-Table
+    }
+    'gog-off' {
+        D1 "INSERT OR REPLACE INTO settings (key, value) VALUES ('gog', 'off')" | Out-Null
+        if ($Arg) { D1 "INSERT OR REPLACE INTO settings (key, value) VALUES ('gog_message', $(Sql $Arg))" | Out-Null }
+        else { D1 "DELETE FROM settings WHERE key = 'gog_message'" | Out-Null }
+        'gog route off'
+    }
+    'gog-on' { D1 "DELETE FROM settings WHERE key IN ('gog', 'gog_message')" | Out-Null; 'gog route on' }
     'status' { D1 "SELECT key, value FROM settings" | Format-Table; D1 "SELECT release, datetime(at, 'unixepoch') AS retired FROM retired" | Format-Table }
 }

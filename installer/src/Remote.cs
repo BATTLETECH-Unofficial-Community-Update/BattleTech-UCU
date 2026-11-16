@@ -49,7 +49,17 @@ namespace ReleaseGate
         public bool NeedsNewerInstaller;    // the vault is in a format this installer can't read
         public RemoteAsset Installer;       // the release's BattleTechUCUSetup.exe, or null
         public byte[] Manifest;             // the release's public manifest (PublicManifest.cs), or null for an older release
+        public byte[] GogManifest;          // its manifest for GOG installs, or null when the release doesn't take them
         public readonly Dictionary<string, RemoteBlob> Blobs = new Dictionary<string, RemoteBlob>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>A release's tag and page, for the launcher's update check (Remote.Peek).</summary>
+    public sealed class ReleaseSummary
+    {
+        public string Version;          // the release's tag
+        public string Page;             // its html_url, or null
+        public string Published;        // published_at, or null
+        public string InstallerSha256;  // the release's installer, from GitHub's digest field; null when it gives none
     }
 
     /// <summary>An HTTP status that retrying won't change.</summary>
@@ -91,7 +101,7 @@ namespace ReleaseGate
             var p = new RemotePackage { Source = source, Version = release.TryGetValue("tag_name", out tag) && tag is string ? (string)tag : "(untagged)" };
             object list;
             var parts = new List<RemoteAsset>();
-            RemoteAsset vault = null, manifest = null;
+            RemoteAsset vault = null, manifest = null, gogManifest = null;
             foreach (object o in release.TryGetValue("assets", out list) && list is object[] ? (object[])list : new object[0])
             {
                 var d = o as Dictionary<string, object>;
@@ -105,6 +115,7 @@ namespace ReleaseGate
                 if (string.Equals(a.Name, Gate.VaultName, StringComparison.OrdinalIgnoreCase)) vault = a;
                 else if (string.Equals(a.Name, InstallerName, StringComparison.OrdinalIgnoreCase)) p.Installer = a;
                 else if (string.Equals(a.Name, PublicManifest.FileName, StringComparison.OrdinalIgnoreCase)) manifest = a;
+                else if (string.Equals(a.Name, PublicManifest.GogFileName, StringComparison.OrdinalIgnoreCase)) gogManifest = a;
                 else if (PartName.IsMatch(a.Name)) parts.Add(a);
             }
             if (vault == null) throw new RemoteRefusedException("Release " + p.Version + " has no " + Gate.VaultName + ".");
@@ -112,8 +123,30 @@ namespace ReleaseGate
             p.NeedsNewerInstaller = !Gate.IsVault(p.Vault);
             if (p.NeedsNewerInstaller) return p;
             if (manifest != null) p.Manifest = Whole(p, manifest, stop);
+            if (gogManifest != null) p.GogManifest = Whole(p, gogManifest, stop);
             Each(parts, a => Index(p, a, stop), stop);
             return p;
+        }
+
+        /// <summary>
+        /// The launcher's update check: the release Open would install (same choice of release), read from one API request,
+        /// without downloading its vault or indexing its parts.
+        /// </summary>
+        public static ReleaseSummary Peek(string source)
+        {
+            Dictionary<string, object> release = FindRelease(source);
+            string tag = Text(release, "tag_name"), page = Text(release, "html_url"), published = Text(release, "published_at");
+            var s = new ReleaseSummary { Version = tag.Length > 0 ? tag : "(untagged)", Page = page.Length > 0 ? page : null, Published = published.Length > 0 ? published : null };
+            object list;
+            foreach (object o in release.TryGetValue("assets", out list) && list is object[] ? (object[])list : new object[0])
+            {
+                var d = o as Dictionary<string, object>;
+                object digest;
+                if (d == null || !string.Equals(Text(d, "name"), InstallerName, StringComparison.OrdinalIgnoreCase)) continue;
+                if (d.TryGetValue("digest", out digest) && digest is string && ((string)digest).StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
+                    s.InstallerSha256 = ((string)digest).Substring(7);
+            }
+            return s;
         }
 
         static Dictionary<string, object> FindRelease(string source)
@@ -359,7 +392,7 @@ namespace ReleaseGate
                 }
                 at += 46 + n + x + c;
                 string key = Volumes.PackageName(name);
-                bool usable = key != null && key != Gate.VaultName && key != PublicManifest.FileName && (flags & 1) == 0 && (method == 8 || (method == 0 && csize == usize));
+                bool usable = key != null && key != Gate.VaultName && key != PublicManifest.FileName && key != PublicManifest.GogFileName && (flags & 1) == 0 && (method == 8 || (method == 0 && csize == usize));
                 all.Add(Tuple.Create(local, key, usable ? new RemoteBlob { Part = a, Local = local, Length = csize, Size = usize, Deflated = method == 8, Crc = crc } : null));
             }
             all.Sort((l, r) => l.Item1.CompareTo(r.Item1));

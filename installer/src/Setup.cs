@@ -1,7 +1,8 @@
 // Installer entry point. Sits beside package.vault and data/, or alone (a GitHub release: it then downloads the package),
 // and writes nothing to the retail install.
 //   BattleTechUCUSetup                                        opens the window; with no package beside it, on the newest
-//                                                            published release (Remote.DefaultSource)
+//                                                            published release (Remote.DefaultSource). Run from an install
+//                                                            (the launcher copy, Launcher.FileName), opens on that install
 //   BattleTechUCUSetup --retail <folder> --dest <folder>      installs with no window; see the exit codes in InstallResult
 //   BattleTechUCUSetup --no-detect                            opens the window without searching Steam's libraries
 //   --package <zip>                                          reads the package from that zip (the itch.io website
@@ -96,12 +97,15 @@ namespace ReleaseGate
                 Application.SetCompatibleTextRenderingDefault(false);
                 // Alone, as downloaded from a GitHub release: install from the release online. Run out of the itch.io
                 // website zip without the zip being found: ask for it.
-                if (remote == null && !Installer.HasPackage)
+                // The launcher copy in an install (Launcher.FileName), or an installer saved into one: open on that install
+                // and read a release only when the player asks for an update.
+                string home = remote == null && !Installer.HasPackage ? Launcher.InstallBeside() : null;
+                if (remote == null && !Installer.HasPackage && home == null)
                 {
                     if (Installer.ZipNameRunFrom() != null) AskForZip();
                     else remote = Remote.DefaultSource;
                 }
-                Application.Run(new SetupForm(detect ? Gate.FindRetail() : null, remote));
+                Application.Run(new SetupForm(detect ? Gate.FindRetail() : null, remote, home));
                 return 0;
             }
             AttachConsole(-1);
@@ -208,7 +212,7 @@ namespace ReleaseGate
             }
             if (retail == null)
             {
-                Console.Error.WriteLine("BATTLETECH was not found in your Steam libraries. Pass --retail <folder>.");
+                Console.Error.WriteLine("BATTLETECH was found neither in your Steam libraries nor in GOG's registry. Pass --retail <folder>.");
                 return InstallResult.NoRetail;
             }
             RetailCheck c = Installer.Check(retail);

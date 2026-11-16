@@ -26,6 +26,11 @@ namespace ReleaseGate
     public static class PublicManifest
     {
         public const string FileName = "ucu-manifest.tsv";
+        /// <summary>What an install from GOG holds: GOG's own copies of retail files whose bytes differ from Steam's.</summary>
+        public const string GogFileName = "ucu-manifest-gog.tsv";
+
+        /// <summary>The package's manifest for an install from this store; an install keeps it as FileName.</summary>
+        public static string FileNameFor(string store) { return store == Gate.Gog ? GogFileName : FileName; }
         public const string Header = "# BattleTech UCU public manifest v1";
 
         /// <summary>Byte-equal to a file in the user's own retail install; copied from it at install time.</summary>

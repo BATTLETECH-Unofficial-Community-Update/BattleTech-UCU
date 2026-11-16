@@ -148,6 +148,7 @@ namespace ReleaseGate
             if (d >= 0 &&entry.EndsWith(".pak", StringComparison.OrdinalIgnoreCase) && entry.IndexOf('/', d + 5) < 0) return entry.Substring(d);
             if (string.Equals(Path.GetFileName(entry), Gate.VaultName, StringComparison.OrdinalIgnoreCase)) return Gate.VaultName;
             if (string.Equals(Path.GetFileName(entry), PublicManifest.FileName, StringComparison.OrdinalIgnoreCase)) return PublicManifest.FileName;
+            if (string.Equals(Path.GetFileName(entry), PublicManifest.GogFileName, StringComparison.OrdinalIgnoreCase)) return PublicManifest.GogFileName;
             return null;
         }
 

@@ -18,6 +18,7 @@ namespace ReleaseGate
     public sealed class RetailCheck
     {
         public string Folder;       // the install root, after tidying what the user typed
+        public string Store;        // Gate.Steam or Gate.Gog (Gate.StoreOf the folder)
         public byte[] Key;          // null when refused
         public List<Entry> Entries;
         public string Problem;      // what to show the user; null when accepted
@@ -141,13 +142,14 @@ namespace ReleaseGate
         }
 
         /// <summary>The package's public manifest, from the same place as its vault; null when it has none.</summary>
-        static byte[] ReadManifest()
+        static byte[] ReadManifest(string store)
         {
-            if (_remote != null) return _remote.Manifest;
-            string loose = Path.Combine(PackageFolder, PublicManifest.FileName);
+            string name = PublicManifest.FileNameFor(store);
+            if (_remote != null) return store == Gate.Gog ? _remote.GogManifest : _remote.Manifest;
+            string loose = Path.Combine(PackageFolder, name);
             if (File.Exists(loose)) return File.ReadAllBytes(loose);
             PartBlob p;
-            if (!Parts.TryGetValue(PublicManifest.FileName, out p)) return null;
+            if (!Parts.TryGetValue(name, out p)) return null;
             using (Stream s = Volumes.OpenBlob(p))
             using (var m = new MemoryStream())
             {
@@ -224,7 +226,8 @@ namespace ReleaseGate
                 {
                     if (vault == null) { c.Problem = "The game package wasn't found. Keep the downloaded zip, or package.vault, in the same folder as this installer."; return c; }
                     Unlock.Retail = c.Folder;
-                    try { c.Key = Gate.ReadVault(vault, fingerprint, Unlock.Get, out entries); }
+                    c.Store = Gate.StoreOf(c.Folder);
+                    try { c.Key = Gate.ReadVault(vault, fingerprint, Unlock.Get, c.Store, out entries); }
                     catch (UnlockException e)
                     {
                         c.Problem = e.Message;
@@ -234,7 +237,9 @@ namespace ReleaseGate
                 }
                 c.Entries = entries;
                 if (c.Key == null)
-                    c.Problem = "This package needs an unmodified Steam install of BATTLETECH. Verify the game's files in Steam and try again.";
+                    c.Problem = c.Store == Gate.Gog
+                        ? "This package doesn't accept this GOG install of BATTLETECH. It needs version 1.9.1, unmodified: verify or repair the game in GOG Galaxy, or reinstall it, and try again."
+                        : "This package needs an unmodified Steam install of BATTLETECH. Verify the game's files in Steam and try again.";
                 else
                 {
                     int missing = entries.Where(e => e.Blob.Length > 0).Select(e => e.Blob).Distinct(StringComparer.OrdinalIgnoreCase).Count(b => !HasBlob(b));
@@ -257,7 +262,7 @@ namespace ReleaseGate
         // SHA-512 is then checked as it is written. A package from before manifests installs as before, with no manifest.
         static void CheckManifest(RetailCheck c)
         {
-            byte[] bytes = ReadManifest();
+            byte[] bytes = ReadManifest(c.Store);
             if (bytes == null) return;
             try
             {
@@ -791,7 +796,8 @@ namespace ReleaseGate
                 }
                 if (bad.Count > 0)
                 {
-                    text = string.Format("{0} file(s) failed their check, first {1}. Verify BATTLETECH in Steam or download this package again.", bad.Count, bad[0]);
+                    text = string.Format("{0} file(s) failed their check, first {1}. {2} or download this package again.", bad.Count, bad[0],
+                        c.Store == Gate.Gog ? "Verify or repair BATTLETECH in GOG Galaxy (or reinstall it from GOG)" : "Verify BATTLETECH in Steam");
                     return InstallResult.Damaged;
                 }
                 // Files an earlier version installed that this one doesn't have.
@@ -805,6 +811,16 @@ namespace ReleaseGate
                     if (File.Exists(full)) { File.Delete(full); removed++; }
                     string[] gone;
                     now.TryRemove(path, out gone);
+                }
+                int markers = 0, markersRemoved = 0;
+                if (c.Store == Gate.Gog)
+                {
+                    try { markers = SyncGogDlcMarkers(retail, dest, out markersRemoved); }
+                    catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+                    {
+                        text = "Install failed: your GOG DLC files (goggame-*.info) couldn't be copied: " + e.Message;
+                        return InstallResult.Failed;
+                    }
                 }
                 string downloads = Path.Combine(dest, DownloadName);
                 if (Directory.Exists(downloads))
@@ -822,6 +838,9 @@ namespace ReleaseGate
                     text += string.Format(" {0} were already up to date; {1} old file(s) removed.", same, removed);
                 if (linkedFiles > 0)
                     text += string.Format(" {0} files ({1}) are links to your BATTLETECH files and take no extra space.", linkedFiles, Size(linkedBytes));
+                if (c.Store == Gate.Gog)
+                    text += string.Format(" DLC from your GOG install: {0}{1}.", markers == 0 ? "none" : markers.ToString(),
+                        markersRemoved > 0 ? string.Format(" ({0} no longer in it removed)", markersRemoved) : "");
                 if (copiedRetail > 0)
                     text += link
                         ? string.Format(" {0} of BATTLETECH's files (code, text and data files, and small files) were copied, so editing them never changes BATTLETECH.", Size(copiedRetail))
@@ -830,6 +849,52 @@ namespace ReleaseGate
                     text += " Files written match the public manifest, SHA-256 " + c.ManifestSha256 + ".";
                 return InstallResult.Installed;
             }
+        }
+
+        static readonly System.Text.RegularExpressions.Regex GogMarkerName =
+            new System.Text.RegularExpressions.Regex(@"^goggame-(\d+)\.info$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        /// <summary>The DLC id when this file is a GOG DLC marker of BATTLETECH (goggame-&lt;id&gt;.info, rootGameId BATTLETECH's, not the base game's), else null.</summary>
+        static string GogDlcId(string file)
+        {
+            var m = GogMarkerName.Match(Path.GetFileName(file));
+            if (!m.Success || m.Groups[1].Value == Gate.GogId) return null;
+            string text;
+            try { text = File.ReadAllText(file); }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { return null; }
+            var root = System.Text.RegularExpressions.Regex.Match(text, "\"rootGameId\"\\s*:\\s*\"(\\d+)\"");
+            return root.Success && root.Groups[1].Value == Gate.GogId ? m.Groups[1].Value : null;
+        }
+
+        /// <summary>
+        /// In GOG mode the player owns a DLC when Galaxy's IsDlcInstalled finds goggame-&lt;dlc id&gt;.info beside its exe; GOG's DLC
+        /// "installs" are only these markers (gog-legs-1 G1: none, no DLC; G1b: copied, the DLC load). The user's own markers
+        /// are copied from their GOG install on every install or repair, and a marker for a DLC no longer there is removed.
+        /// The base game's goggame-1482783682.info is not copied, so Gate.StoreOf never takes the UCU folder for a GOG install.
+        /// Returns how many markers the folder now has.
+        /// </summary>
+        public static int SyncGogDlcMarkers(string retail, string dest, out int removed)
+        {
+            removed = 0;
+            var have = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string src in Directory.EnumerateFiles(retail, "goggame-*.info", SearchOption.TopDirectoryOnly))
+            {
+                if (GogDlcId(src) == null) continue;
+                string name = Path.GetFileName(src), dst = Path.Combine(dest, name);
+                have.Add(name);
+                byte[] bytes = File.ReadAllBytes(src);
+                if (File.Exists(dst) && File.ReadAllBytes(dst).SequenceEqual(bytes)) continue;
+                File.WriteAllBytes(dst + ".part", bytes);
+                if (File.Exists(dst)) File.Delete(dst);
+                File.Move(dst + ".part", dst);
+            }
+            foreach (string old in Directory.EnumerateFiles(dest, "goggame-*.info", SearchOption.TopDirectoryOnly).ToList())
+                if (!have.Contains(Path.GetFileName(old)) && GogDlcId(old) != null)
+                {
+                    File.Delete(old);
+                    removed++;
+                }
+            return have.Count;
         }
 
         static void Pump(Stream from, Stream to, InstallProgress progress, CancellationToken stop)

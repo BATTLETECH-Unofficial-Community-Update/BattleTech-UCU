@@ -96,8 +96,8 @@ namespace ReleaseGate
             Directory.CreateDirectory(outDir);
             File.Copy(setup, Path.Combine(outDir, Remote.InstallerName));
             File.Copy(Path.Combine(package, Gate.VaultName), Path.Combine(outDir, Gate.VaultName));
-            if (File.Exists(Path.Combine(package, PublicManifest.FileName)))
-                File.Copy(Path.Combine(package, PublicManifest.FileName), Path.Combine(outDir, PublicManifest.FileName));
+            foreach (string m in new[] { PublicManifest.FileName, PublicManifest.GogFileName })
+                if (File.Exists(Path.Combine(package, m))) File.Copy(Path.Combine(package, m), Path.Combine(outDir, m));
             File.Copy(verify, Path.Combine(outDir, ManagerForm.VerifyScript));
             List<string> parts = Volumes.WriteParts(package, outDir, label, partBytes, n => { }, CancellationToken.None);
             var index = Volumes.Index(outDir);
@@ -122,7 +122,7 @@ namespace ReleaseGate
         {
             assets = Path.GetFullPath(assets);
             List<string> files = ManagerForm.AssetFiles(assets);
-            var exeOnly = files.Where(f => new[] { Remote.InstallerName, PublicManifest.FileName, ManagerForm.VerifyScript }
+            var exeOnly = files.Where(f => new[] { Remote.InstallerName, PublicManifest.FileName, PublicManifest.GogFileName, ManagerForm.VerifyScript }
                 .Contains(Path.GetFileName(f), StringComparer.OrdinalIgnoreCase)).ToList();
             int bad = 0, ok = 0;
             foreach (var pair in new[] { Tuple.Create(data, dataName, files), Tuple.Create(main, mainName, exeOnly) })
@@ -183,12 +183,13 @@ namespace ReleaseGate
             GitHub main = new GitHub(mainName, tokenFile), data = new GitHub(dataName, tokenFile);
             if (ManagerForm.LockOf(assets) == null) throw new IOException("This package needs no access code, and GitHub releases are public. Pack it with the unlock server.");
             List<string> files = ManagerForm.AssetFiles(assets);
-            var exeOnly = files.Where(f => new[] { Remote.InstallerName, PublicManifest.FileName, ManagerForm.VerifyScript }
+            var exeOnly = files.Where(f => new[] { Remote.InstallerName, PublicManifest.FileName, PublicManifest.GogFileName, ManagerForm.VerifyScript }
                 .Contains(Path.GetFileName(f), StringComparer.OrdinalIgnoreCase)).ToList();
             string manifestFile = Path.Combine(assets, PublicManifest.FileName);
             if (!File.Exists(manifestFile)) throw new IOException("This package has no public manifest (" + PublicManifest.FileName + "). Pack it again.");
             string manifestLine = "Public manifest: " + PublicManifest.FileName + ", SHA-256 " + PublicManifest.Sha256Of(File.ReadAllBytes(manifestFile)) +
-                ". It lists every file this release installs, with SHA-512 and origin; check an install with " + ManagerForm.VerifyScript + " or the installer's Verify install.";
+                ". It lists every file this release installs, with SHA-512 and origin; check an install with " + ManagerForm.VerifyScript + " or the installer's Verify install."
+                + ManagerForm.GogManifestLine(assets);
             if (!body.Contains(manifestLine)) body = (body.TrimEnd() + "\n\n" + manifestLine).TrimStart();
             string dataBody = "Package data for " + name + ". Players: download BattleTechUCUSetup.exe from https://github.com/" + mainName + "/releases instead; " +
                 "it downloads these files itself.";

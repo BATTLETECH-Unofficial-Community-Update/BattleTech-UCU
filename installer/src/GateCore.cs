@@ -46,6 +46,16 @@ namespace ReleaseGate
         public const uint AppId = 637090;
         public const string VaultName = "package.vault";
 
+        /// <summary>GOG's product id for BATTLETECH; its install holds goggame-&lt;id&gt;.info and a registry key of that id.</summary>
+        public const string GogId = "1482783682";
+        public const string Steam = "steam", Gog = "gog";
+
+        /// <summary>The store a retail install comes from: GOG when it carries GOG's game info file, otherwise Steam.</summary>
+        public static string StoreOf(string retail)
+        {
+            return File.Exists(Path.Combine(retail, "goggame-" + GogId + ".info")) ? Gog : Steam;
+        }
+
         /// <summary>
         /// True when the player's game code sets SteamAppId itself (transplant patch 101, 2026-11-12), so it needs no
         /// steam_appid.txt. Older players need the file, or they relaunch retail through Steam. Looks for the
@@ -275,6 +285,17 @@ namespace ReleaseGate
         /// </summary>
         public static void WriteVault(string path, byte[] packageKey, IEnumerable<byte[]> fingerprints, List<Entry> entries, VaultLock lk, byte[] share)
         {
+            WriteVault(path, packageKey, fingerprints, entries, lk, share, null);
+        }
+
+        /// <summary>
+        /// As above, with per-store sections after the manifest: for an install from that store, an entry of the same path
+        /// replaces the manifest's and the others are added. An installer from before them stops reading at the manifest, so
+        /// the main manifest stays what a Steam install gets.
+        /// </summary>
+        public static void WriteVault(string path, byte[] packageKey, IEnumerable<byte[]> fingerprints, List<Entry> entries, VaultLock lk, byte[] share,
+            IDictionary<string, List<Entry>> stores)
+        {
             using (var f = new FileStream(path, FileMode.Create, FileAccess.Write))
             using (var w = new BinaryWriter(f))
             {
@@ -297,10 +318,37 @@ namespace ReleaseGate
                 }
                 w.Write(slots.Count);
                 foreach (byte[] s in slots) { w.Write(s.Length); w.Write(s); }
-                byte[] m = Seal(Encoding.UTF8.GetBytes(WriteManifest(entries)), lk == null ? packageKey : Derive(packageKey, share, "manifest3"), "manifest");
+                byte[] manifestKey = lk == null ? packageKey : Derive(packageKey, share, "manifest3");
+                byte[] m = Seal(Encoding.UTF8.GetBytes(WriteManifest(entries)), manifestKey, "manifest");
                 w.Write(m.Length);
                 w.Write(m);
+                if (stores == null || stores.Count == 0) return;
+                w.Write(StoresMark);
+                w.Write(stores.Count);
+                foreach (var s in stores)
+                {
+                    byte[] b = Seal(Encoding.UTF8.GetBytes(WriteManifest(s.Value)), manifestKey, "store|" + s.Key);
+                    w.Write(s.Key);
+                    w.Write(b.Length);
+                    w.Write(b);
+                }
             }
+        }
+
+        const int StoresMark = 0x53545231; // "STR1"
+
+        /// <summary>The manifest with a store's section applied: same-path entries replaced, the others added.</summary>
+        static List<Entry> ApplyStore(List<Entry> entries, List<Entry> section)
+        {
+            var at = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < entries.Count; i++) at[entries[i].Path] = i;
+            foreach (Entry e in section)
+            {
+                int i;
+                if (at.TryGetValue(e.Path, out i)) entries[i] = e;
+                else { at[e.Path] = entries.Count; entries.Add(e); }
+            }
+            return entries;
         }
 
         const string RetailOk = "btucu-retail-ok";
@@ -323,6 +371,12 @@ namespace ReleaseGate
         /// throws UnlockException; without it a v3 vault throws UnlockException.
         /// </summary>
         public static byte[] ReadVault(Stream f, byte[] fingerprint, Func<VaultLock, byte[]> share, out List<Entry> entries)
+        {
+            return ReadVault(f, fingerprint, share, null, out entries);
+        }
+
+        /// <summary>As above; store (StoreOf the retail install) picks the vault's section for that store, if it has one.</summary>
+        public static byte[] ReadVault(Stream f, byte[] fingerprint, Func<VaultLock, byte[]> share, string store, out List<Entry> entries)
         {
             entries = null;
             using (var r = new BinaryReader(f, Encoding.UTF8, true))
@@ -354,6 +408,20 @@ namespace ReleaseGate
                 byte[] m = Open(r.ReadBytes(r.ReadInt32()), manifestKey, "manifest");
                 if (m == null) throw new InvalidDataException("Package manifest failed its check");
                 entries = ReadManifest(Encoding.UTF8.GetString(m));
+                if (store == null) return key;
+                int mark;
+                try { mark = r.ReadInt32(); }
+                catch (EndOfStreamException) { return key; }
+                if (mark != StoresMark) throw new InvalidDataException("Unknown section after the package manifest");
+                for (int n = r.ReadInt32(); n > 0; n--)
+                {
+                    string name = r.ReadString();
+                    byte[] b = r.ReadBytes(r.ReadInt32());
+                    if (name != store) continue;
+                    byte[] s = Open(b, manifestKey, "store|" + name);
+                    if (s == null) throw new InvalidDataException("Package store section failed its check");
+                    entries = ApplyStore(entries, ReadManifest(Encoding.UTF8.GetString(s)));
+                }
                 return key;
             }
         }
@@ -397,8 +465,30 @@ namespace ReleaseGate
             return iv;
         }
 
-        /// <summary>Finds the install through Steam's own library files, without needing Steam to be running.</summary>
+        /// <summary>Finds a Steam install, else a GOG one (GOG's installer writes its folder to the registry).</summary>
         public static string FindRetail()
+        {
+            return FindSteam() ?? FindGog();
+        }
+
+        public static string FindGog()
+        {
+            foreach (RegistryView view in new[] { RegistryView.Registry32, RegistryView.Registry64 })
+                try
+                {
+                    using (RegistryKey hklm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view))
+                    using (RegistryKey k = hklm.OpenSubKey(@"SOFTWARE\GOG.com\Games\" + GogId))
+                    {
+                        string p = k == null ? null : k.GetValue("path") as string;
+                        if (!string.IsNullOrEmpty(p) && Directory.Exists(p)) return p;
+                    }
+                }
+                catch (Exception e) when (e is System.Security.SecurityException || e is UnauthorizedAccessException || e is IOException) { }
+            return null;
+        }
+
+        /// <summary>Finds the install through Steam's own library files, without needing Steam to be running.</summary>
+        public static string FindSteam()
         {
             string steam = null;
             using (RegistryKey k = Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam"))

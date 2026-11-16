@@ -1,12 +1,15 @@
 // Asks the unlock server for a v3 release's share (docs/keyserver-design.md). With no access code, the installer proves
 // ownership through Steam (SteamTicket.cs) and the server confirms the ticket with Valve; an access code is the manual
-// route for anyone Steam can't confirm. The share is never written to disk: every install or update asks again. The
-// access code is remembered for this Windows user only.
+// route for anyone Steam can't confirm. A GOG install has no ownership ticket a server outside GOG can check, so it unlocks
+// on its files (the maintainer, 2026-11-15): the installer sends an HMAC of the install's fingerprint bound to the release, and the
+// server checks it against the GOG fingerprints it holds. The fingerprint itself never leaves the PC. The share is never
+// written to disk: every install or update asks again. The access code is remembered for this Windows user only.
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 using System.Web.Script.Serialization;
 
@@ -22,7 +25,7 @@ namespace ReleaseGate
         public static string UrlOverride;
         /// <summary>The BATTLETECH folder being checked: its steam_api64.dll gets the Steam ticket.</summary>
         public static string Retail;
-        /// <summary>How the last share was obtained: "steam", "code" or "share".</summary>
+        /// <summary>How the last share was obtained: "steam", "gog", "code" or "share".</summary>
         public static string LastRoute;
 
         const string Agent = "BattleTechUCU-Setup";
@@ -71,8 +74,9 @@ namespace ReleaseGate
             if (ShareOverride != null) { LastRoute = "share"; return ShareOverride; }
             string code = Normalize(Code);
             if (code.Length > 0 && code.Length != CodeLength) throw new UnlockException("An access code has " + CodeLength + " letters and digits (dashes don't count).");
-            string route = code.Length > 0 ? "code" : "steam";
-            string cacheKey = lk.Id + "|" + (code.Length > 0 ? code : "steam");
+            bool gog = code.Length == 0 && Retail != null && Gate.StoreOf(Retail) == Gate.Gog;
+            string route = code.Length > 0 ? "code" : gog ? "gog" : "steam";
+            string cacheKey = lk.Id + "|" + (code.Length > 0 ? code : route);
             lock (Cache)
             {
                 byte[] hit;
@@ -81,6 +85,7 @@ namespace ReleaseGate
             string url = (UrlOverride ?? lk.Url).TrimEnd('/') + "/v1/unlock";
             byte[] share = code.Length > 0
                 ? Ask(url, new Dictionary<string, object> { { "release", lk.Id }, { "code", code }, { "installer", Version } })
+                : gog ? Ask(url, GogRequest(lk.Id, Gate.Fingerprint(Retail)))
                 : SteamTicket.With(Retail, t => Ask(url, new Dictionary<string, object> { { "release", lk.Id }, { "steam", t.Hex }, { "steamKind", t.Kind }, { "installer", Version } }));
             lock (Cache) Cache[cacheKey] = share;
             LastRoute = route;
@@ -114,6 +119,8 @@ namespace ReleaseGate
             if (error == "steam-blocked") throw new UnlockException("This Steam account can't unlock releases. If you think that's a mistake, ask for an access code.");
             if (error == "steam-off") throw new UnlockException(string.IsNullOrEmpty(message) ? "Unlocking through Steam is switched off for now. Enter an access code instead." : message);
             if (error == "steam-down") throw new UnlockException("Steam couldn't be asked to confirm your copy right now. Try again later.");
+            if (error == "gog") throw new UnlockException("The unlock server didn't accept this GOG install of BATTLETECH. If you were given an access code, enter it instead.");
+            if (error == "gog-off") throw new UnlockException(string.IsNullOrEmpty(message) ? "Unlocking GOG installs is switched off for now. Enter an access code instead." : message);
             if (error == "release") throw new UnlockException("This release has been withdrawn. Look for a newer one.");
             if (error == "closed") throw new UnlockException(string.IsNullOrEmpty(message) ? "Installing is switched off for now." : message);
             if (error == "slow-down") throw new UnlockException("Too many tries. Wait a while and try again.");
@@ -139,6 +146,43 @@ namespace ReleaseGate
             if (error == "steam-down") return "it couldn't use Valve's Web API" + (message != null ? " (" + message + ")" : "") + "; check its STEAM_WEBAPI_KEY secret";
             if (error == "closed") return "installing is switched off (admin.ps1 open)";
             if (status == 400) return "it has no Steam route yet; deploy the current keyserver";
+            return "it answered " + status + (error != null ? " " + error : "");
+        }
+
+        /// <summary>
+        /// The GOG route's request: HMAC-SHA256 keyed with the install's fingerprint over "btucu-gog|" + the release id. The
+        /// server holds the accepted fingerprints and recomputes it; the proof opens this release only.
+        /// </summary>
+        static Dictionary<string, object> GogRequest(string releaseId, byte[] fingerprint)
+        {
+            string proof;
+            using (var h = new HMACSHA256(fingerprint)) proof = Gate.Hex(h.ComputeHash(Encoding.UTF8.GetBytes("btucu-gog|" + releaseId)));
+            return new Dictionary<string, object> { { "release", releaseId }, { "gog", proof }, { "installer", Version } };
+        }
+
+        /// <summary>
+        /// Checks a server's GOG route. With a GOG install's fingerprint, a real proof for this release must come back with
+        /// the release's share (want), which shows the server holds that fingerprint. Without one, a dummy proof must be
+        /// refused as "gog", which shows only that the route is on. Null when the check passes; else what's wrong.
+        /// </summary>
+        public static string GogRouteProblem(string baseUrl, VaultLock lk, byte[] fingerprint, byte[] want)
+        {
+            var request = fingerprint != null ? GogRequest(lk.Id, fingerprint)
+                : new Dictionary<string, object> { { "release", new string('0', 32) }, { "gog", new string('0', 64) }, { "installer", Version } };
+            int status;
+            Dictionary<string, object> answer;
+            try { answer = Post(baseUrl.TrimEnd('/') + "/v1/unlock", Encoding.UTF8.GetBytes(Json.Serialize(request)), out status); }
+            catch (WebException e) when (e.Response == null) { return "the server can't be reached (" + e.Message + ")"; }
+            object v;
+            string error = answer != null && answer.TryGetValue("error", out v) ? v as string : null;
+            if (fingerprint == null && status == 403 && error == "gog") return null;
+            if (fingerprint != null && status == 200 && answer != null && answer.TryGetValue("share", out v) && v is string)
+                return string.Equals((string)v, Gate.Hex(want), StringComparison.OrdinalIgnoreCase) ? null : "it answered with a different share (another master secret)";
+            if (fingerprint != null && status == 403 && error == "gog") return "it doesn't hold this GOG install's fingerprint; set GOG_FINGERPRINTS to ReleasePack --fingerprint <GOG install>";
+            if (error == "gog-off") return "its GOG route is off (no GOG_FINGERPRINTS secret, or admin.ps1 gog-off)";
+            if (error == "closed") return "installing is switched off (admin.ps1 open)";
+            if (error == "release") return "release " + lk.Id + " is retired";
+            if (status == 400) return "it has no GOG route yet; deploy the current keyserver";
             return "it answered " + status + (error != null ? " " + error : "");
         }
 

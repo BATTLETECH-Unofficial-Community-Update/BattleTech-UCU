@@ -182,6 +182,10 @@ Battletech is a registered trademark of Microsoft Gaming and the Topps Company (
 
 LiAlH4, for gifting a GOG key to the project so we could add GOG support.
 
+[Jaroslav Stehlik](https://github.com/jaroslavstehlik) and other contributors to that project for the SVG Importer.
+
+[NotNull92](https://github.com/NotNull92) for the Hera Unity Agent.
+
 UCU was founded and is presently directed by InternetDadCo.
 
 Finally, to Jack, for the idea and a reason to go to the trouble.

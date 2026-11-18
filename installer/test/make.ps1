@@ -1,6 +1,9 @@
 # Builds the synthetic remote-update test set: two small players (v1, v2), their packages, and v2's data parts to serve.
-param([string]$Root, [string]$Retail = 'D:\Steam\steamapps\common\BATTLETECH', [string]$Bin = 'F:\Unity-Tools\BattleTech-Unity6\tools\release-gate\bin')
+param([string]$Root, [string]$Retail, [string]$Bin)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '..\..\UcuPaths.ps1')
+if (-not $Retail) { $Retail = Get-UcuPath retail_install -Required }
+if (-not $Bin) { $Bin = Join-Path $UcuRepo 'tools\release-gate\bin' }
 if (Test-Path $Root) { Remove-Item -Recurse -Force $Root }
 New-Item -ItemType Directory -Force "$Root\tools" | Out-Null
 Copy-Item "$Bin\*.exe" "$Root\tools"

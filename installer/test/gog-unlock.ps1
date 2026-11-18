@@ -11,11 +11,16 @@ param(
     [Parameter(Mandatory)][string]$Admin,
     [Parameter(Mandatory)][string]$Code,
     [string]$Url = 'http://127.0.0.1:8787',
-    [string]$Steam = 'D:\Steam\steamapps\common\BATTLETECH',
-    [string]$Gog = 'F:\Games\BATTLETECH',
-    [string]$Bin = 'F:\Unity-Tools\BattleTech-Unity6\tools\release-gate\bin'
+    [string]$Steam,
+    [string]$Gog,
+    [string]$Bin
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '..\..\UcuPaths.ps1')
+$src = if ($env:UCU_RETAIL_SOURCE) { $env:UCU_RETAIL_SOURCE } else { 'steam' }
+if (-not $Bin) { $Bin = Join-Path $UcuRepo 'tools\release-gate\bin' }
+if (-not $Steam) { if ($src -eq 'steam') { $Steam = Get-UcuPath retail_install -Required } else { throw 'pass -Steam <dir> (retail_source is gog)' } }
+if (-not $Gog) { if ($src -eq 'gog') { $Gog = Get-UcuPath retail_install -Required } else { throw 'pass -Gog <dir> (or set UCU_RETAIL_SOURCE=gog)' } }
 if (Test-Path $Root) { throw "Root exists: $Root" }
 New-Item -ItemType Directory -Force "$Root\tools", "$Root\no-steam", "$Root\player" | Out-Null
 Copy-Item "$Bin\*.exe" "$Root\tools"

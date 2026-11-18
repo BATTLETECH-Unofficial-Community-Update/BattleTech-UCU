@@ -18,13 +18,13 @@ What's here: `src/worker.js` (the Worker), `schema.sql` (its D1 database), `wran
 ## Where to run it
 
 On this workstation, programs under `tools/` can't write, and wrangler's local runtime fails there. `build.ps1 -Deploy
-F:\Unity-Tools\ReleaseManager` copies this folder to `F:\Unity-Tools\ReleaseManager\keyserver`; run everything from
+<workspace>\ReleaseManager` copies this folder to `<workspace>\ReleaseManager\keyserver`; run everything from
 there. It keeps an existing `wrangler.toml` there, because that copy holds your database id. If `wrangler.toml` here
 changes, copy the change over by hand.
 
 ## First setup (once)
 
-In `F:\Unity-Tools\ReleaseManager\keyserver`, in PowerShell:
+In `<workspace>\ReleaseManager\keyserver`, in PowerShell:
 
 1. Install Node.js (LTS) if `node --version` fails.
 
@@ -48,7 +48,7 @@ In `F:\Unity-Tools\ReleaseManager\keyserver`, in PowerShell:
    ```
 
 5. Make the master secret. In the Release Manager:
-   - Set *Master secret file* to `F:\Unity-Tools\ReleaseManager\keys\master-secret.txt` and press *Create secret*.
+   - Set *Master secret file* to `<workspace>\ReleaseManager\keys\master-secret.txt` and press *Create secret*.
    - Back it up with the content key. If it's lost, nobody can install releases packed with it.
 
 6. Give the Worker the same secret. Paste the file's contents when asked; the Worker keeps it encrypted.
@@ -57,7 +57,7 @@ In `F:\Unity-Tools\ReleaseManager\keyserver`, in PowerShell:
    npx wrangler secret put MASTER_SECRET
    ```
 
-6a. Give the Worker your Steam Web API key (`F:\Unity-Tools\ReleaseManager\keys\steam-webapi-key.txt`, from
+6a. Give the Worker your Steam Web API key (`<workspace>\ReleaseManager\keys\steam-webapi-key.txt`, from
    steamcommunity.com/dev/apikey). It's what the Worker asks Valve with. Without it, only access codes work.
 
    ```powershell
@@ -68,7 +68,7 @@ In `F:\Unity-Tools\ReleaseManager\keyserver`, in PowerShell:
    master secret: anyone who has it can unlock those packages. Without it, GOG owners need an access code.
 
    ```powershell
-   ..\ReleasePack.exe --fingerprint F:\Games\BATTLETECH | npx wrangler secret put GOG_FINGERPRINTS
+   ..\ReleasePack.exe --fingerprint <retail> | npx wrangler secret put GOG_FINGERPRINTS
    ```
 
    For more than one GOG build, put their fingerprints in one value, separated by commas.
@@ -87,7 +87,7 @@ In `F:\Unity-Tools\ReleaseManager\keyserver`, in PowerShell:
    .\admin.ps1 new-code release-manager-test
    ```
 
-   Copy the printed code into `F:\Unity-Tools\ReleaseManager\keys\test-code.txt`.
+   Copy the printed code into `<workspace>\ReleaseManager\keys\test-code.txt`.
 
 From then on, packages from the Release Manager need the unlock server: Steam owners install with no code. To pack one
 anyone with the BATTLETECH files can install, clear both unlock fields.
@@ -123,7 +123,7 @@ table; existing tables are kept), then `npx wrangler deploy`.
 | Switch it back on | `.\admin.ps1 gog-on` |
 
 - **`new-code`** prints the code once, as `XXXXX-XXXXX-XXXXX-XXXXX`, and adds it to
-  `F:\Unity-Tools\ReleaseManager\keys\access-codes.tsv`. The server keeps only a hash of it.
+  `<workspace>\ReleaseManager\keys\access-codes.tsv`. The server keeps only a hash of it.
 - **Players** enter the code in the installer, which remembers it for that Windows user. Dashes, spaces and case don't matter.
 - **Release ids:** the Release Manager's log shows a package's release id when it packs one.
 - **Changing the Worker:** after you change `src/worker.js`, run `npx wrangler deploy` again.

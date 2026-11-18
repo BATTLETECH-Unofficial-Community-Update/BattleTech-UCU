@@ -208,7 +208,7 @@ namespace ReleaseGate
 
         // GitHub tab
         readonly TextBox _repo = Box("Repository"), _dataRepo = Box("DataRepository"), _token = Box("TokenFile"), _tag = Box("Tag"), _relName = Box("ReleaseName"),
-            _assets = Box("AssetsPath"), _partGib = Box("PartSize");
+            _assets = Box("AssetsPath"), _partGib = Box("PartSize"), _changelog = Box("ChangelogFile");
         readonly TextBox _notes = new TextBox { Name = "ReleaseNotes", Multiline = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, Height = 150, AcceptsReturn = true };
         readonly CheckBox _draft = new CheckBox { Text = "Draft (publish it on GitHub when you're ready)", AutoSize = true, Checked = true },
             _pre = new CheckBox { Text = "Pre-release", AutoSize = true };
@@ -250,7 +250,7 @@ namespace ReleaseGate
 
             var tabs = new TabControl { Dock = DockStyle.Fill };
             tabs.TabPages.Add(PackageTab());
-            tabs.TabPages.Add(ItchTab());
+            // The itch.io tab (ItchTab) is kept but not shown; its push code stays for a later return.
             tabs.TabPages.Add(GitHubTab());
 
             var bottom = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Padding = new Padding(8, 4, 8, 8) };
@@ -436,7 +436,7 @@ namespace ReleaseGate
 
         TabPage GitHubTab()
         {
-            var page = new TabPage("3. GitHub Releases");
+            var page = new TabPage("2. GitHub Releases");
             var t = Grid();
             Para(t, "Releases are public. The repository's release holds only BattleTechUCUSetup.exe; the data repository's release with the same tag " +
                 "holds package.vault, the data parts and a copy of the installer. The installer checks BATTLETECH, has Steam confirm the player owns it, " +
@@ -454,6 +454,7 @@ namespace ReleaseGate
             Row(t, "Upload token file", _token, Browse(_token, false, "Choose the file holding the GitHub token that uploads releases"));
             Row(t, "Tag", _tag, null);
             Row(t, "Release title", _relName, null);
+            Row(t, "Changelog file", _changelog, Browse(_changelog, false, "Choose CHANGELOG.md: the selected release's section is appended to the notes"));
             Row(t, "Notes", _notes, null);
             Wide(t, Buttons(_draft, _pre));
             Wide(t, _ghNote);
@@ -461,6 +462,7 @@ namespace ReleaseGate
             page.Controls.Add(t);
 
             foreach (TextBox b in new[] { _repo, _dataRepo, _token, _tag, _assets, _partGib }) b.TextChanged += (s, e) => QueueChecks();
+            _changelog.TextChanged += (s, e) => { if (!_settingVersion) UpdateDefaults(); };
             _publish.Click += (s, e) => GitHubPublish();
             _counts.Click += (s, e) =>
             {
@@ -492,7 +494,10 @@ namespace ReleaseGate
             _itchChannel.Text = _settings.Get("itchChannel", "windows");
             _repo.Text = _settings.Get("repo", DefaultRepo);
             _dataRepo.Text = _settings.Get("dataRepo", DefaultDataRepo);
-            _token.Text = _settings.Get("token", "");
+            // Write access is the org token (secrets\btucu-mgmt-token.txt); a saved path to any other token file is replaced by it.
+            string org = FindOrgToken(), savedToken = _settings.Get("token", "");
+            _token.Text = org != null && !Path.GetFileName(savedToken).Equals(OrgTokenName, StringComparison.OrdinalIgnoreCase) ? org : savedToken;
+            _changelog.Text = _settings.Get("changelog", FindChangelog() ?? "");
             _assets.Text = _settings.Get("assets", "");
             _partGib.Text = _settings.Get("partGib", "1.95");
             _master.Text = _settings.Get("master", "");
@@ -510,7 +515,7 @@ namespace ReleaseGate
             _settings.Set("master", _master.Text); _settings.Set("unlockUrl", _unlockUrl.Text);
             _settings.Set("extra", _extra.Text); _settings.Set("package", Typed(_package)); _settings.Set("testDest", Typed(_testDest));
             _settings.Set("butler", _butler.Text); _settings.Set("butlerKey", _butlerKey.Text); _settings.Set("itchTarget", _itchTarget.Text);
-            _settings.Set("itchChannel", _itchChannel.Text); _settings.Set("repo", _repo.Text); _settings.Set("dataRepo", _dataRepo.Text); _settings.Set("token", _token.Text);
+            _settings.Set("itchChannel", _itchChannel.Text); _settings.Set("repo", _repo.Text); _settings.Set("dataRepo", _dataRepo.Text); _settings.Set("token", _token.Text); _settings.Set("changelog", _changelog.Text);
             _settings.Set("assets", Typed(_assets)); _settings.Set("partGib", _partGib.Text); _settings.Set("version", _versionEdited ? _version.Text : "");
             _settings.Save();
         }
@@ -537,7 +542,7 @@ namespace ReleaseGate
             }
             if (_notes.Text.Length == 0 || _notes.Tag as string == _notes.Text)
             {
-                _notes.Text = DefaultNotes(label);
+                _notes.Text = DefaultNotes(v, _changelog.Text.Trim());
                 _notes.Tag = _notes.Text;
             }
         }
@@ -555,17 +560,69 @@ namespace ReleaseGate
         // Saved only when the user typed it, so computed paths follow the next version.
         static string Typed(TextBox box) { return box.Text == box.Tag as string ? "" : box.Text; }
 
-        internal static string DefaultNotes(string label)
+        // Notes open with what a player needs, then carry the selected release's CHANGELOG.md section.
+        internal static string DefaultNotes(string version, string changelogPath = null)
         {
-            return "Needs your own copy of BATTLETECH on Steam, installed and unmodified, and Steam running and signed in when you install and play.\r\n\r\n" +
-                "1. Download BattleTechUCUSetup.exe below and run it. That's the only file you need: it downloads the game itself. " +
-                "(The \"Source code\" archives aren't needed.)\r\n" +
-                "2. The installer finds BATTLETECH, confirms with Steam that you own it, downloads the game and installs it to a new folder " +
-                "beside BATTLETECH. Your copy of BATTLETECH isn't changed, and no profile settings need changing. (Only if you were given " +
-                "an access code: enter it in the installer.)\r\n" +
-                "3. Press Start game, or run BattleTech.exe in the install folder.\r\n\r\n" +
-                "To update, run BattleTechUCUSetup.exe again and install to the same folder: it downloads only what changed. " +
-                "Windows SmartScreen may warn because the installer isn't signed yet.";
+            string text = "You need two things: the BattleTech UCU launcher (download BattleTechUCUSetup.exe below) and BATTLETECH itself, installed through Steam or GOG. " +
+                "The launcher finds your copy, installs UCU to a new folder beside it and starts the game; your own BATTLETECH isn't changed. " +
+                "To update, run the launcher again: it keeps a copy of itself in your install folder as BattleTech UCU Launcher.exe. (The \"Source code\" archives aren't needed. Windows SmartScreen may warn because the launcher isn't signed yet.)";
+            string section = ChangelogSection(changelogPath, version);
+            return section.Length == 0 ? text : text + "\r\n\r\n" + section;
+        }
+
+        /// <summary>The CHANGELOG.md section whose "## " heading starts with the version (or its label); empty when there is none.</summary>
+        internal static string ChangelogSection(string path, string version)
+        {
+            if (string.IsNullOrEmpty(path) || string.IsNullOrWhiteSpace(version)) return "";
+            string[] lines;
+            try { lines = File.ReadAllLines(path); }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is ArgumentException || e is NotSupportedException) { return ""; }
+            string v = version.Trim(), label = Checks.SafeLabel(v);
+            int start = -1;
+            for (int i = 0; i < lines.Length && start < 0; i++)
+                if (lines[i].StartsWith("## ") && (HeadingIs(lines[i], v) || HeadingIs(lines[i], label))) start = i;
+            if (start < 0) return "";
+            int end = lines.Length;
+            for (int i = start + 1; i < lines.Length; i++) if (lines[i].StartsWith("## ")) { end = i; break; }
+            return string.Join("\r\n", lines.Skip(start).Take(end - start)).Trim();
+        }
+
+        static bool HeadingIs(string heading, string v)
+        {
+            string h = heading.Substring(3).Trim();
+            return h == v || h.StartsWith(v + " ");
+        }
+
+        const string OrgTokenName = "btucu-mgmt-token.txt";
+
+        /// <summary>secrets\btucu-mgmt-token.txt in the nearest folder above this tool or the working directory.</summary>
+        static string FindOrgToken()
+        {
+            foreach (string start in new[] { AppDomain.CurrentDomain.BaseDirectory, Environment.CurrentDirectory })
+            {
+                try
+                {
+                    for (var d = new DirectoryInfo(start); d != null; d = d.Parent)
+                        if (File.Exists(Path.Combine(d.FullName, "secrets", OrgTokenName))) return Path.Combine(d.FullName, "secrets", OrgTokenName);
+                }
+                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { }
+            }
+            return null;
+        }
+
+        /// <summary>CHANGELOG.md in the nearest folder above this tool or the working directory.</summary>
+        static string FindChangelog()
+        {
+            foreach (string start in new[] { AppDomain.CurrentDomain.BaseDirectory, Environment.CurrentDirectory })
+            {
+                try
+                {
+                    for (var d = new DirectoryInfo(start); d != null; d = d.Parent)
+                        if (File.Exists(Path.Combine(d.FullName, "CHANGELOG.md"))) return Path.Combine(d.FullName, "CHANGELOG.md");
+                }
+                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { }
+            }
+            return null;
         }
 
         // ---------- checks ----------
@@ -692,7 +749,7 @@ namespace ReleaseGate
                     _blobCountStale = false;
                 }
                 int blobs = _blobCount;
-                Show(_packageNote, string.Format("Existing package, {0} blobs. Publish it from the itch.io or GitHub tab, or choose a new folder to pack again.", blobs), Good);
+                Show(_packageNote, string.Format("Existing package, {0} blobs. Publish it from the GitHub tab, or choose a new folder to pack again.", blobs), Good);
             }
             else if (newPackage) Show(_packageNote, "A new package will be written here.", Good);
             else if (package.Length == 0) Show(_packageNote, "Choose a new folder for the package.", Bad);

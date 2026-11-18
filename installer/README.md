@@ -24,7 +24,7 @@ support on or off, links a mod pack (BTA, RogueTech or another ModTek pack), and
 
 Nothing is written outside the install folder, apart from an accepted access code and the launcher's settings, which are
 kept in `%APPDATA%\BattleTechUCU\` (`access.txt`, `launcher.ini`). The installer adds no registry entries or uninstaller,
-and makes desktop or Start menu shortcuts only when you ask on its Tools tab. To uninstall, delete the install folder.
+and makes desktop or Start menu shortcuts, or a bug report zip on your Desktop, only when you ask on its Tools tab. To uninstall, delete the install folder.
 
 ## Checking what you downloaded and installed
 

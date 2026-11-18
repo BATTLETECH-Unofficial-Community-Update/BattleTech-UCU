@@ -18,9 +18,11 @@ param(
     [Parameter(Mandatory = $true, Position = 0)][ValidateSet('init', 'new-code', 'revoke', 'restore', 'codes', 'log', 'retire', 'unretire', 'close', 'open', 'status', 'steam', 'steam-block', 'steam-unblock', 'steam-off', 'steam-on', 'family', 'gog', 'gog-off', 'gog-on')][string]$Command,
     [Parameter(Position = 1)][string]$Arg,
     [switch]$Local,
-    [string]$Keys = 'F:\Unity-Tools\ReleaseManager\keys'
+    [string]$Keys
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '..\..\UcuPaths.ps1')
+if (-not $Keys) { $Keys = Join-Path $UcuWorkspace 'ReleaseManager\keys' }
 $here = $PSScriptRoot
 $where = if ($Local) { '--local' } else { '--remote' }
 # wrangler from this folder's node_modules (npm install), else npx's. Called with $ErrorActionPreference Continue:

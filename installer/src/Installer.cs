@@ -759,7 +759,7 @@ namespace ReleaseGate
                                 ok = File.Exists(src) && Copy(src, part, e.Sha256, sha512, progress, stop);
                                 if (ok) Interlocked.Add(ref copiedRetail, e.Size);
                             }
-                            else ok = Open(part, key, e, sha512, progress, stop);
+                            else ok = Open(part, key, e, sha512, progress, stop, retail);
                         }
                         catch (OperationCanceledException)
                         {
@@ -948,7 +948,7 @@ namespace ReleaseGate
             }
         }
 
-        static bool Open(string dst, byte[] key, Entry e, string sha512, InstallProgress progress, CancellationToken stop)
+        static bool Open(string dst, byte[] key, Entry e, string sha512, InstallProgress progress, CancellationToken stop, string retail)
         {
             using (var cipherHash = Gate.NewSha())
             using (var plainHash = Gate.NewSha())
@@ -956,6 +956,7 @@ namespace ReleaseGate
             {
                 try
                 {
+                    List<RangePiece> pieces = e.Pieces == null ? null : Gate.ParsePieces(e.Pieces);
                     using (var i = OpenBlob(e.Blob))
                     using (var hashed = new CryptoStream(i, cipherHash, CryptoStreamMode.Read))
                     {
@@ -968,7 +969,12 @@ namespace ReleaseGate
                         using (var w = Hashed(o, wide))
                         using (var h = new CryptoStream(w, plainHash, CryptoStreamMode.Write))
                         {
-                            Pump(z, h, progress, stop);
+                            if (pieces == null || pieces.Count == 0)
+                                Pump(z, h, progress, stop);
+                            else if (!Ranged(z, h, e, pieces, retail, progress, stop))
+                                return false;
+                            else
+                                Drain(z, stop);
                             // Read the rest, so the blob's hash covers the whole file.
                             var rest = new byte[1 << 16];
                             while (dec.Read(rest, 0, rest.Length) > 0) { }
@@ -978,8 +984,54 @@ namespace ReleaseGate
                 catch (CryptographicException) { return false; }
                 catch (InvalidDataException) { return false; }
                 catch (FileNotFoundException) { return false; }
+                catch (IOException) { return false; }
+                catch (UnauthorizedAccessException) { return false; }
                 return Gate.Hex(cipherHash.Hash) == e.BlobSha256 && Gate.Hex(plainHash.Hash) == e.Sha256 && Matches512(wide, sha512);
             }
+        }
+
+        /// <summary>Rebuilds a ranged file: residual bytes from the blob, retail ranges from the retail install.</summary>
+        static bool Ranged(Stream residual, Stream output, Entry e, List<RangePiece> pieces, string retail, InstallProgress progress, CancellationToken stop)
+        {
+            var buf = new byte[1 << 20];
+            foreach (RangePiece p in pieces)
+            {
+                if (p.FromRetail)
+                {
+                    string src = Path.Combine(retail, p.Path);
+                    if (!File.Exists(src)) return false;
+                    using (var r = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20, FileOptions.SequentialScan))
+                    {
+                        if (r.Length < p.Offset + p.Length) return false;
+                        r.Position = p.Offset;
+                        if (!CopyExactly(r, output, p.Length, buf, progress, stop)) return false;
+                    }
+                }
+                else if (!CopyExactly(residual, output, p.Length, buf, progress, stop)) return false;
+            }
+            return true;
+        }
+
+        static bool CopyExactly(Stream from, Stream to, long length, byte[] buf, InstallProgress progress, CancellationToken stop)
+        {
+            while (length > 0)
+            {
+                int n = from.Read(buf, 0, (int)Math.Min(buf.Length, length));
+                if (n <= 0) return false;
+                stop.ThrowIfCancellationRequested();
+                to.Write(buf, 0, n);
+                Interlocked.Add(ref progress.Done, n);
+                length -= n;
+            }
+            return true;
+        }
+
+        /// <summary>Reads any decompressed bytes past the pieces (none for a package this packer wrote); the whole-file
+        /// hash fails a manifest whose pieces don't add up.</summary>
+        static void Drain(Stream z, CancellationToken stop)
+        {
+            var buf = new byte[1 << 16];
+            while (z.Read(buf, 0, buf.Length) > 0) stop.ThrowIfCancellationRequested();
         }
     }
 }

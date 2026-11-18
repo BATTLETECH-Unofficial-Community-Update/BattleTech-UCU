@@ -21,10 +21,10 @@
   (finds a GOG install from the registry)
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File hash-install.ps1 -Path "C:\GOG Games\BATTLETECH"
+  powershell -ExecutionPolicy Bypass -File hash-install.ps1 -Path "<gog-install>"
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File hash-install.ps1 -Path D:\Steam\steamapps\common\BATTLETECH -Compare gog.txt
+  powershell -ExecutionPolicy Bypass -File hash-install.ps1 -Path <retail> -Compare gog.txt
   (hashes this install and lists files that differ from an earlier report)
 
 .EXAMPLE
@@ -67,7 +67,7 @@ function Find-GogInstall {
             }
         }
     }
-    foreach ($guess in 'C:\GOG Games\BATTLETECH', 'C:\Program Files (x86)\GOG Galaxy\Games\BATTLETECH') {
+    foreach ($guess in (Join-Path $env:SystemDrive 'GOG Games\BATTLETECH'), (Join-Path ${env:ProgramFiles(x86)} 'GOG Galaxy\Games\BATTLETECH')) {
         if (Test-Path (Join-Path $guess 'BattleTech.exe')) { return $guess }
     }
     return $null

@@ -36,8 +36,8 @@ namespace ReleaseGate
 
     public sealed class PackResult
     {
-        public int Files, Encrypted, Blobs, FromRetail;
-        public long SealedBytes, PackedBytes, CopiedBytes, LargestBlob;
+        public int Files, Encrypted, Blobs, FromRetail, Ranged;
+        public long SealedBytes, PackedBytes, CopiedBytes, LargestBlob, SteamRangeBytes, GogRangeBytes;
         public string Summary;
         public string ReleaseId;   // v3 only: the id the unlock server is asked about
         public string ManifestSha256;   // of ucu-manifest.tsv, for the release notes
@@ -196,6 +196,9 @@ namespace ReleaseGate
                 if (!index.TryGetValue(k, out l)) index[k] = l = new List<string>();
                 l.Add(rel);
             }
+            // Byte ranges of the retail installs, for files that aren't retail-identical but embed retail runs.
+            RetailIndex steamRanges = RetailIndex.Build(retail);
+            RetailIndex gogRanges = gog == null ? null : RetailIndex.Build(gog);
 
             var files = new List<string>();
             foreach (string f in Directory.EnumerateFiles(player, "*", SearchOption.AllDirectories))
@@ -208,16 +211,22 @@ namespace ReleaseGate
             Directory.CreateDirectory(Path.Combine(output, "data"));
             var entries = new Entry[files.Count];
             var rows = new ManifestRow[files.Count];
-            long copied = 0, sealedBytes = 0, blobBytes = 0, largest = 0;
-            // Files with the same content share one blob.
+            long copied = 0, sealedBytes = 0, blobBytes = 0, largest = 0, steamRange = 0, gogRange = 0, residualBytes = 0;
+            int ranged = 0;
+            var gogRanged = new ConcurrentDictionary<string, List<RangePiece>>(StringComparer.OrdinalIgnoreCase);
+            // Files with the same content share one blob. A ranged file's blob holds only its residual bytes.
             var blobs = new ConcurrentDictionary<string, Lazy<string>>();
-            Func<string, string, string> sealOnce = (src, sha) =>
+            Func<string, string, List<RangePiece>, string> sealOnce = (src, sha, residual) =>
             {
                 string blob = Gate.BlobFor(key, sha);
                 return blobs.GetOrAdd(sha, _ => new Lazy<string>(() =>
                 {
                     string dst = Path.Combine(output, blob);
-                    string s = Seal(src, dst, key, blob, sha);
+                    string s;
+                    if (residual == null)
+                        s = Seal(src, dst, key, blob, sha);
+                    else
+                        using (var input = new ResidualStream(src, residual)) s = Seal(input, dst, key, blob, sha);
                     long n = new FileInfo(dst).Length;
                     Interlocked.Add(ref blobBytes, n);
                     long seen;
@@ -239,12 +248,36 @@ namespace ReleaseGate
                     && index.TryGetValue(Path.GetFileName(rel) + "|" + size, out candidates))
                     foreach (string c in candidates)
                         if (Gate.HashFile(Path.Combine(retail, c)) == sha) { e.RetailPath = c; break; }
+                List<RangePiece> pieces = null;
+                if (e.RetailPath.Length == 0 && size >= 64 * 1024)
+                {
+                    RetailIndex.Scan scan = steamRanges.ScanFile(src, stop);
+                    if (scan.Matched >= 1 << 20) pieces = scan.Pieces;
+                }
                 if (e.RetailPath.Length > 0)
                     Interlocked.Add(ref copied, size);
+                else if (pieces != null)
+                {
+                    string residualSha = RetailRanges.ResidualSha256(src, pieces);
+                    e.Pieces = Gate.FormatPieces(pieces);
+                    e.Blob = Gate.BlobFor(key, residualSha);
+                    e.BlobSha256 = sealOnce(src, residualSha, pieces);
+                    long fromSteam = RetailRanges.RetailBytes(pieces);
+                    Interlocked.Add(ref steamRange, fromSteam);
+                    Interlocked.Add(ref sealedBytes, size - fromSteam);
+                    Interlocked.Add(ref residualBytes, size - fromSteam);
+                    Interlocked.Increment(ref ranged);
+                    if (gogRanges != null)
+                    {
+                        List<RangePiece> g = gogRanges.ScanFile(src, stop).Pieces;
+                        gogRanged[rel] = g;
+                        Interlocked.Add(ref gogRange, RetailRanges.RetailBytes(g));
+                    }
+                }
                 else
                 {
                     e.Blob = Gate.BlobFor(key, sha);
-                    e.BlobSha256 = sealOnce(src, sha);
+                    e.BlobSha256 = sealOnce(src, sha, null);
                     Interlocked.Add(ref sealedBytes, size);
                 }
                 entries[i] = e;
@@ -263,7 +296,7 @@ namespace ReleaseGate
             if (gog != null)
             {
                 slots.Add(Gate.Fingerprint(gog));
-                List<Entry> section = GogSection(player, gog, key, entries, rows, sealOnce, stop, out gogRows, out gogSummary);
+                List<Entry> section = GogSection(player, gog, key, entries, rows, sealOnce, stop, gogRanged, out gogRows, out gogSummary);
                 stores = new Dictionary<string, List<Entry>> { { Gate.Gog, section } };
             }
             Gate.WriteVault(Path.Combine(output, Gate.VaultName), key, slots, entries.ToList(), lk, lk == null ? null : Gate.Share(masterSecret, lk.ReleaseId), stores);
@@ -283,6 +316,9 @@ namespace ReleaseGate
                 Encrypted = entries.Count(x => x.RetailPath.Length == 0),
                 Blobs = blobs.Count,
                 FromRetail = entries.Count(x => x.RetailPath.Length > 0),
+                Ranged = ranged,
+                SteamRangeBytes = steamRange,
+                GogRangeBytes = gogRange,
                 SealedBytes = sealedBytes,
                 PackedBytes = blobBytes,
                 CopiedBytes = copied,
@@ -296,6 +332,8 @@ namespace ReleaseGate
             result.Summary = string.Format("files {0}; encrypted {1}, {2:F2} GiB in {3} blobs, {4:F2} GiB packed, largest blob {5:F2} GiB; copied from retail at install {6}, {7:F2} GiB; {8:F0} s",
                 result.Files, result.Encrypted, sealedBytes / 1073741824.0, result.Blobs, blobBytes / 1073741824.0, largest / 1073741824.0,
                 result.FromRetail, copied / 1073741824.0, clock.Elapsed.TotalSeconds)
+                + string.Format("; ranged {0} files, {1:F2} GiB from Steam ranges, {2:F2} GiB from GOG ranges, residual {3:F2} GiB",
+                    ranged, steamRange / 1073741824.0, gogRange / 1073741824.0, residualBytes / 1073741824.0)
                 + (lk == null ? "; no unlock server (v2)" : "; unlock server release " + lk.Id)
                 + "; public manifest " + origins + (unity == null ? " (the player's Unity Editor wasn't found and no --unity was given: stock Unity files count as built or data)" : " (Unity files from " + unity + ")")
                 + ", SHA-256 " + result.ManifestSha256
@@ -331,13 +369,15 @@ namespace ReleaseGate
         /// The vault's GOG section and GOG's public manifest. A retail-sourced file whose GOG copy differs is copied from GOG
         /// when gog-accept.tsv lists both hashes, else installed from Steam's bytes, packed; the Galaxy natives are added.
         /// </summary>
-        static List<Entry> GogSection(string player, string gog, byte[] key, Entry[] entries, ManifestRow[] rows, Func<string, string, string> sealOnce,
-            CancellationToken stop, out List<ManifestRow> gogRows, out string summary)
+        static List<Entry> GogSection(string player, string gog, byte[] key, Entry[] entries, ManifestRow[] rows,
+            Func<string, string, List<RangePiece>, string> sealOnce, CancellationToken stop, ConcurrentDictionary<string, List<RangePiece>> gogRanged,
+            out List<ManifestRow> gogRows, out string summary)
         {
             HashSet<string> accept = GogAccept();
             var section = new ConcurrentBag<Entry>();
             var newRows = new ConcurrentDictionary<string, ManifestRow>(StringComparer.OrdinalIgnoreCase);
-            long own = 0, packed = 0, packedBytes = 0;
+            var byPath = entries.ToDictionary(e => e.Path, StringComparer.OrdinalIgnoreCase);
+            long own = 0, packed = 0, packedBytes = 0, ranged = 0;
             Parallel.ForEach(Enumerable.Range(0, entries.Length).Where(i => entries[i].RetailPath.Length > 0),
                 new ParallelOptions { MaxDegreeOfParallelism = Math.Max(4, Environment.ProcessorCount / 2), CancellationToken = stop }, i =>
             {
@@ -356,12 +396,25 @@ namespace ReleaseGate
                 }
                 else
                 {
-                    string blobSha = sealOnce(Path.Combine(player, e.Path), e.Sha256);
+                    string blobSha = sealOnce(Path.Combine(player, e.Path), e.Sha256, null);
                     section.Add(new Entry { Path = e.Path, Size = e.Size, Blob = Gate.BlobFor(key, e.Sha256), BlobSha256 = blobSha, RetailPath = "", Sha256 = e.Sha256 });
                     newRows[e.Path] = new ManifestRow { Path = e.Path, Size = e.Size, Sha512 = r.Sha512, Origin = r.Exec ? PublicManifest.Built : PublicManifest.Data, Exec = r.Exec };
                     Interlocked.Increment(ref packed);
                     Interlocked.Add(ref packedBytes, e.Size);
                 }
+            });
+            // A ranged file rebuilt from GOG's own bytes where they differ from Steam's. Its public manifest row is
+            // unchanged: the file it installs is the same bytes either way.
+            Parallel.ForEach(gogRanged, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(4, Environment.ProcessorCount / 2), CancellationToken = stop }, kv =>
+            {
+                Entry e = byPath[kv.Key];
+                string text = Gate.FormatPieces(kv.Value);
+                if (text == e.Pieces) return;
+                string src = Path.Combine(player, kv.Key);
+                string residualSha = RetailRanges.ResidualSha256(src, kv.Value);
+                string blobSha = sealOnce(src, residualSha, kv.Value);
+                section.Add(new Entry { Path = e.Path, Size = e.Size, Blob = Gate.BlobFor(key, residualSha), BlobSha256 = blobSha, RetailPath = "", Sha256 = e.Sha256, Pieces = text });
+                Interlocked.Increment(ref ranged);
             });
             var list = section.ToList();
             foreach (string n in GogNatives)
@@ -376,14 +429,21 @@ namespace ReleaseGate
             }
             gogRows = rows.Select(r => { ManifestRow x; return newRows.TryGetValue(r.Path, out x) ? x : r; })
                 .Concat(GogNatives.Where(n => !rows.Any(r => string.Equals(r.Path, n, StringComparison.OrdinalIgnoreCase))).Select(n => newRows[n])).ToList();
-            summary = string.Format("{0} files copied from GOG's own differing copies, {1} ({2:F2} GiB) from Steam's bytes packed, {3} Galaxy files",
-                own, packed, packedBytes / 1073741824.0, GogNatives.Length);
+            summary = string.Format("{0} files copied from GOG's own differing copies, {1} ({2:F2} GiB) from Steam's bytes packed, {3} ranged files from GOG's own ranges, {4} Galaxy files",
+                own, packed, packedBytes / 1073741824.0, ranged, GogNatives.Length);
             return list.OrderBy(x => x.Path, StringComparer.Ordinal).ToList();
         }
 
         // Blob = IV, then AES-CBC of the deflated file. Key and IV come from the content key and the file's hash, so the
         // same file always gives the same bytes.
         static string Seal(string src, string dst, byte[] key, string blob, string plainSha)
+        {
+            using (var i = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20, FileOptions.SequentialScan))
+                return Seal(i, dst, key, blob, plainSha);
+        }
+
+        /// <summary>Seals a stream: a whole file, or a ranged file's residual gaps.</summary>
+        static string Seal(Stream src, string dst, byte[] key, string blob, string plainSha)
         {
             byte[] iv = Gate.BlobIv(key, plainSha);
             using (var hash = Gate.NewSha())
@@ -395,8 +455,7 @@ namespace ReleaseGate
                     hashed.Write(iv, 0, iv.Length);
                     using (var enc = new CryptoStream(hashed, a.CreateEncryptor(), CryptoStreamMode.Write))
                     using (var z = new DeflateStream(enc, CompressionLevel.Optimal))
-                    using (var i = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20, FileOptions.SequentialScan))
-                        i.CopyTo(z, 1 << 20);
+                        src.CopyTo(z, 1 << 20);
                 }
                 return Gate.Hex(hash.Hash);
             }

@@ -1,6 +1,9 @@
 # Real-size set: the 4A package as GitHub data parts, served beside its vault and the current installer.
-param([string]$Package = 'F:\Unity-Tools\transplant-gate\release-2.0.0-4A-package', [string]$Out = 'F:\Unity-Tools\transplant-gate\release-gate-test\remote-4A-assets', [string]$Tools)
+param([string]$Package, [string]$Out, [string]$Tools)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '..\..\UcuPaths.ps1')
+if (-not $Package) { $Package = Join-Path $UcuWorkspace 'transplant-gate\release-2.0.0-4A-package' }
+if (-not $Out) { $Out = Join-Path $UcuWorkspace 'transplant-gate\release-gate-test\remote-4A-assets' }
 if (Test-Path $Out) { throw "exists: $Out" }
 [Reflection.Assembly]::LoadFrom("$Tools\BattleTechUCUSetup.exe") | Out-Null
 $clock = [Diagnostics.Stopwatch]::StartNew()

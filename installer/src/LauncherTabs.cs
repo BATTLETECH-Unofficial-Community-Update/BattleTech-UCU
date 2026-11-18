@@ -45,6 +45,8 @@ namespace ReleaseGate
         readonly RadioButton _packJunction = new RadioButton { Name = "PackJunction", Text = "Link (no extra disk space; both games share the mods' settings)", AutoSize = true, Checked = true };
         readonly RadioButton _packCopy = new RadioButton { Name = "PackCopy", Text = "Copy (about 20 GiB; UCU's copy is its own)", AutoSize = true };
         readonly CheckBox _packSaves = new CheckBox { Name = "PackSaves", Text = "Bring the pack's saves (BTASaves, ModSaves) across", AutoSize = true, Checked = true };
+        readonly CheckBox _combatSaves = new CheckBox { Name = "CombatSaves", Text = "EXPERIMENTAL: Enable in-mission saves. Modpacks disable this for a good reason! We try to take away the reason with some on-the-fly changes to many mods. Make sure you still save before and after missions as this feature is a priority but it is still new! These saves can only be loaded by UCU with this option enabled.", AutoSize = true, MaximumSize = new Size(480, 0), Margin = new Padding(3, 4, 3, 2) };
+        readonly Label _combatSavesNote = Note("CombatSavesNote");
         readonly Button _packLink = new UcuButton { Name = "PackLink", Text = "Link pack" };
         readonly Button _packUnlink = new UcuButton { Name = "PackUnlink", Text = "Unlink" };
         readonly Label _packState = Note("PackState");
@@ -284,6 +286,8 @@ namespace ReleaseGate
             mode.Controls.AddRange(new Control[] { _packJunction, _packCopy });
             Span(t, mode);
             Span(t, _packSaves);
+            Span(t, _combatSaves);
+            Span(t, _combatSavesNote);
             Span(t, Row(_packLink, _packUnlink));
             Span(t, _packState);
 
@@ -292,6 +296,7 @@ namespace ReleaseGate
             _packFolder.TextChanged += (s, e) => PackChanged();
             _packJunction.CheckedChanged += (s, e) => PackChanged();
             _packSaves.CheckedChanged += (s, e) => PackChanged();
+            _combatSaves.CheckedChanged += (s, e) => CombatSavesToggled();
             _packBrowse.Click += (s, e) =>
             {
                 using (var d = new FolderBrowserDialog { Description = "Choose the mod pack's install: the folder that holds Mods\\ModTek", ShowNewFolderButton = false })
@@ -345,10 +350,17 @@ namespace ReleaseGate
             bool hasSupport = installed && File.Exists(Path.Combine(dest, "ModSupport", "BattleTechPortBootstrap.dll"));
             _loadingSettings = true;
             _modsOn.Checked = installed ? Installer.ModsWanted(dest) : _mods.Checked;
+            bool combatSavesEnabled = installed && Launcher.CombatSavesEnabled(dest);
+            _combatSaves.Checked = combatSavesEnabled;
+            _settings.CombatSavesEnabled = combatSavesEnabled;
             _loadingSettings = false;
             if (!installed) Show(_modsNote, "Install UCU first; the choice here is then applied to it. Until then it is the Install tab's setting.", SystemColors.ControlText);
             else if (!hasSupport) Show(_modsNote, "This release has no ModSupport folder, so mod support can't be turned on here.", Bad);
             else Show(_modsNote, "Takes effect the next time the game starts.", SystemColors.ControlText);
+            _combatSaves.Enabled = installed && hasSupport && Installer.ModsWanted(dest) && !_installing;
+            if (!installed || !hasSupport || !Installer.ModsWanted(dest))
+                Show(_combatSavesNote, "Turn on mod support and install its ModSupport files before enabling combat saves.", SystemColors.ControlText);
+            else Show(_combatSavesNote, "Takes effect the next time the game starts. Story-mission-start autosaves stay skipped, and the in-combat quit popup keeps IRTweaks' wording.", SystemColors.ControlText);
             PackLink link = installed ? Launcher.ReadLink(dest) : null;
             if (!installed) Show(_packState, "", Good);
             else if (link == null) Show(_packState, "No mod pack is linked to this install.", SystemColors.ControlText);
@@ -390,6 +402,38 @@ namespace ReleaseGate
             string m = Installer.ApplyMods(dest, _modsOn.Checked);
             Show(_modsNote, m ?? "This release has no ModSupport folder, so mod support can't be changed here.", m != null && !m.Contains("couldn't") ? Good : Bad);
             QueueHome();
+        }
+
+        void CombatSavesToggled()
+        {
+            if (_loadingSettings) return;
+            string dest = CurrentInstall();
+            if (!Launcher.IsInstall(dest))
+            {
+                RefreshMods();
+                Show(_combatSavesNote, "Choose an installed UCU folder first.", Bad);
+                return;
+            }
+            if (Launcher.GameRunning(dest))
+            {
+                RefreshMods();
+                Show(_combatSavesNote, "Close the game first; the change applies when it next starts.", Bad);
+                return;
+            }
+            bool enabled = _combatSaves.Checked;
+            string problem = Launcher.SetCombatSavesEnabled(dest, enabled);
+            if (problem != null)
+            {
+                RefreshMods();
+                Show(_combatSavesNote, "Combat saves setting couldn't be changed: " + problem, Bad);
+                return;
+            }
+            _settings.CombatSavesEnabled = enabled;
+            string settingsProblem = _settings.Save();
+            if (settingsProblem != null)
+                Show(_combatSavesNote, "Combat saves are " + (enabled ? "on" : "off") + ", but the launcher setting couldn't be saved: " + settingsProblem, Bad);
+            else
+                Show(_combatSavesNote, "Combat saves " + (enabled ? "on" : "off") + ". Takes effect the next time the game starts.", Good);
         }
 
         void RunLink(bool unlink)
@@ -472,6 +516,7 @@ namespace ReleaseGate
             _packCopy.Checked = _settings.PackCopy;
             _packJunction.Checked = !_settings.PackCopy;
             _packSaves.Checked = !_settings.PackNoSaves;
+            _combatSaves.Checked = _settings.CombatSavesEnabled;
             _loadingSettings = false;
         }
 
@@ -495,9 +540,10 @@ namespace ReleaseGate
             var start = new UcuButton { Name = "StartMenuShortcut", Text = "Start menu" };
             Span(t, Row(desktop, start));
             Span(t, Heading("Help"));
+            var collect = new UcuButton { Name = "CollectReport", Text = "Collect bug report" };
             var report = new UcuButton { Name = "ReportProblem", Text = "Report a problem" };
             var releases = new UcuButton { Name = "AllReleases", Text = "All releases" };
-            Span(t, Row(report, releases));
+            Span(t, Row(collect, report, releases));
             Span(t, _toolsStatus);
             _toolButtons = new[] { verify, repair, folder, mods, desktop, start };
 
@@ -515,8 +561,39 @@ namespace ReleaseGate
             backups.Click += (s, e) => OpenFolder(SaveBackup.BackupRoot);
             desktop.Click += (s, e) => MakeShortcut(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory));
             start.Click += (s, e) => MakeShortcut(Environment.GetFolderPath(Environment.SpecialFolder.Programs));
+            collect.Click += (s, e) => CollectReport(collect);
             report.Click += (s, e) => Launcher.Open(Launcher.IssuesPage);
             releases.Click += (s, e) => Launcher.Open(Launcher.ReleasesPage);
+        }
+
+        /// <summary>Zips every log to the Desktop, copies the zip's path and offers the GitHub issue page to attach it to.</summary>
+        void CollectReport(Button button)
+        {
+            button.Enabled = false;
+            Show(_toolsStatus, "Collecting logs...", SystemColors.ControlText);
+            string install = CurrentInstall();
+            string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            Task.Run(() => BugReport.Collect(install, _settings, desktop)).ContinueWith(t =>
+            {
+                if (IsDisposed) return;
+                button.Enabled = true;
+                if (t.IsFaulted)
+                {
+                    Exception x = t.Exception.GetBaseException();
+                    Show(_toolsStatus, "The bug report couldn't be made: " + x.Message, Bad);
+                    return;
+                }
+                string zip = t.Result;
+                try { Clipboard.SetText(zip); } catch (System.Runtime.InteropServices.ExternalException) { }
+                long size = new FileInfo(zip).Length;
+                bool big = size > BugReport.GitHubLimit;
+                Show(_toolsStatus, "Saved " + zip + " (" + Math.Max(1, size >> 10) + " KB); the path is on the clipboard." +
+                    (big ? " It is over GitHub's 25 MB attachment limit: share it through a file host instead." : ""), big ? Bad : Good);
+                try { System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + zip + "\""); } catch (System.ComponentModel.Win32Exception) { }
+                if (MessageBox.Show(this, "Your bug report is on the Desktop:\n" + zip + "\n\nIt holds the game's and your mods' logs, with your Windows user folder name blanked out. Its path is on the clipboard. Open GitHub to describe the problem and attach the file?",
+                        Text, MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+                    Launcher.Open(Launcher.IssuesPage);
+            }, TaskScheduler.FromCurrentSynchronizationContext());
         }
 
         void OpenFolder(string dir)

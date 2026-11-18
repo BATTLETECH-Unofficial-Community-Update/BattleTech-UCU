@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Win32;
@@ -22,6 +23,16 @@ namespace ReleaseGate
         public string BlobSha256;  // hex, of the whole blob
         public string RetailPath;  // source inside the retail install; empty when decrypted from the package
         public string Sha256;      // hex, of the plaintext
+        public string Pieces;      // ranged entry: B:<len> and R:<offset>:<len>:<retail path> joined by |, else empty
+    }
+
+    /// <summary>One piece of a ranged file: copy length bytes from the residual blob (Path empty) or from retail.</summary>
+    public sealed class RangePiece
+    {
+        public long Offset;
+        public long Length;
+        public string Path;   // retail-relative source; null for a residual piece
+        public bool FromRetail { get { return Path != null; } }
     }
 
     /// <summary>
@@ -83,6 +94,10 @@ namespace ReleaseGate
         }
         static readonly byte[] Magic = Encoding.ASCII.GetBytes("BTU6GAT2");
         static readonly byte[] Magic3 = Encoding.ASCII.GetBytes("BTU6GAT3");
+        // A package with any ranged entry says so in the magic: an installer from before ranges doesn't know these and
+        // hands on to a newer one. The layout after the magic is unchanged.
+        static readonly byte[] MagicR = Encoding.ASCII.GetBytes("BTU6GAR2");
+        static readonly byte[] MagicR3 = Encoding.ASCII.GetBytes("BTU6GAR3");
         const int Window = 1 << 20;
 
         static bool Starts(byte[] head, byte[] magic)
@@ -96,7 +111,12 @@ namespace ReleaseGate
         /// <summary>False when a vault starts with another format's mark: a newer installer is needed to read it.</summary>
         public static bool IsVault(byte[] head)
         {
-            return Starts(head, Magic) || Starts(head, Magic3);
+            return Starts(head, Magic) || Starts(head, Magic3) || Starts(head, MagicR) || Starts(head, MagicR3);
+        }
+
+        static bool IsV3(byte[] magic)
+        {
+            return Starts(magic, Magic3) || Starts(magic, MagicR3);
         }
 
         /// <summary>A release's share: what the unlock server hands out for it.</summary>
@@ -120,8 +140,8 @@ namespace ReleaseGate
             using (var r = new BinaryReader(f, Encoding.UTF8, true))
             {
                 byte[] magic = r.ReadBytes(Magic3.Length);
-                if (Starts(magic, Magic)) return null;
-                if (!Starts(magic, Magic3)) throw new InvalidDataException("Not a package vault");
+                if (Starts(magic, Magic) || Starts(magic, MagicR)) return null;
+                if (!IsV3(magic)) throw new InvalidDataException("Not a package vault");
                 return new VaultLock { ReleaseId = r.ReadBytes(16), Url = r.ReadString() };
             }
         }
@@ -299,15 +319,17 @@ namespace ReleaseGate
             using (var f = new FileStream(path, FileMode.Create, FileAccess.Write))
             using (var w = new BinaryWriter(f))
             {
+                bool ranged = entries.Any(e => !string.IsNullOrEmpty(e.Pieces))
+                    || (stores != null && stores.Values.Any(l => l.Any(e => !string.IsNullOrEmpty(e.Pieces))));
                 var slots = new List<byte[]>();
                 if (lk == null)
                 {
-                    w.Write(Magic);
+                    w.Write(ranged ? MagicR : Magic);
                     foreach (byte[] fp in fingerprints) slots.Add(Seal(packageKey, fp, "slot"));
                 }
                 else
                 {
-                    w.Write(Magic3);
+                    w.Write(ranged ? MagicR3 : Magic3);
                     w.Write(lk.ReleaseId);
                     w.Write(lk.Url);
                     foreach (byte[] fp in fingerprints)
@@ -382,8 +404,8 @@ namespace ReleaseGate
             using (var r = new BinaryReader(f, Encoding.UTF8, true))
             {
                 byte[] magic = r.ReadBytes(Magic.Length);
-                bool v3 = Starts(magic, Magic3);
-                if (!v3 && !Starts(magic, Magic)) throw new InvalidDataException("Not a package vault");
+                bool v3 = IsV3(magic);
+                if (!v3 && !Starts(magic, Magic) && !Starts(magic, MagicR)) throw new InvalidDataException("Not a package vault");
                 VaultLock lk = v3 ? new VaultLock { ReleaseId = r.ReadBytes(16), Url = r.ReadString() } : null;
                 byte[] key = null, slot3 = null;
                 int slots = r.ReadInt32();
@@ -431,7 +453,8 @@ namespace ReleaseGate
             var s = new StringBuilder();
             foreach (Entry e in entries)
                 s.Append(e.Path).Append('\t').Append(e.Size).Append('\t').Append(e.Blob).Append('\t')
-                 .Append(e.BlobSha256).Append('\t').Append(e.RetailPath).Append('\t').Append(e.Sha256).Append('\n');
+                 .Append(e.BlobSha256).Append('\t').Append(e.RetailPath).Append('\t').Append(e.Sha256).Append('\t')
+                 .Append(e.Pieces ?? "").Append('\n');
             return s.ToString();
         }
 
@@ -442,9 +465,40 @@ namespace ReleaseGate
             {
                 if (line.Length == 0) continue;
                 string[] c = line.Split('\t');
-                list.Add(new Entry { Path = c[0], Size = long.Parse(c[1]), Blob = c[2], BlobSha256 = c[3], RetailPath = c[4], Sha256 = c[5] });
+                // The 7th column (pieces) came with retail-range packing; older manifests have 6.
+                list.Add(new Entry { Path = c[0], Size = long.Parse(c[1]), Blob = c[2], BlobSha256 = c[3], RetailPath = c[4], Sha256 = c[5],
+                    Pieces = c.Length > 6 ? c[6] : "" });
             }
             return list;
+        }
+
+        /// <summary>Parses an entry's pieces: B:&lt;length&gt; or R:&lt;offset&gt;:&lt;length&gt;:&lt;retail relative path&gt;.</summary>
+        public static List<RangePiece> ParsePieces(string text)
+        {
+            var list = new List<RangePiece>();
+            if (string.IsNullOrEmpty(text)) return list;
+            foreach (string p in text.Split('|'))
+            {
+                string[] c = p.Split(new[] { ':' }, 4);
+                if (c[0] == "B" && c.Length == 2)
+                    list.Add(new RangePiece { Length = long.Parse(c[1]) });
+                else if (c[0] == "R" && c.Length == 4)
+                    list.Add(new RangePiece { Offset = long.Parse(c[1]), Length = long.Parse(c[2]), Path = c[3] });
+                else throw new InvalidDataException("Bad piece in the package manifest: " + p);
+            }
+            return list;
+        }
+
+        /// <summary>The manifest's piece column for a piece list.</summary>
+        public static string FormatPieces(IEnumerable<RangePiece> pieces)
+        {
+            var b = new StringBuilder();
+            foreach (RangePiece p in pieces)
+            {
+                if (b.Length > 0) b.Append('|');
+                b.Append(p.FromRetail ? "R:" + p.Offset + ":" + p.Length + ":" + p.Path : "B:" + p.Length);
+            }
+            return b.ToString();
         }
 
         public static byte[] FileKey(byte[] packageKey, string blob, string purpose)

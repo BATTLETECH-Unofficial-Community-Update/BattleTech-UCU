@@ -8,13 +8,28 @@ list came from .hermes/reports/logic-gog-support-1-20261115/content-equivalence.
 rows are equivalent but in another order, which SQLite reads may expose).
 """
 import argparse, hashlib, os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "tools"))
+import ucu_paths as up
+
+
+def default_install(source):
+    """The resolver's install when it is that source; otherwise the caller passes --steam/--gog."""
+    if up.retail_source() != source:
+        return None
+    install = up.retail_install()
+    return str(install) if install else None
+
 
 ap = argparse.ArgumentParser()
 ap.add_argument("tsv"); ap.add_argument("out")
-ap.add_argument("--steam", default=r"D:\Steam\steamapps\common\BATTLETECH")
-ap.add_argument("--gog", default=r"F:\Games\BATTLETECH")
+ap.add_argument("--steam", default=default_install("steam"), help="Steam install; default from ucu_paths retail_install()")
+ap.add_argument("--gog", default=default_install("gog"), help="GOG install; default with UCU_RETAIL_SOURCE=gog")
 ap.add_argument("--exclude-kind", action="append", default=[])
 a = ap.parse_args()
+for name in ("steam", "gog"):
+    if not getattr(a, name):
+        sys.exit(f"--{name} is required: the resolver did not return a {name} install "
+                 f"(set BT_RETAIL_INSTALL/UCU_RETAIL_SOURCE={name} or pass --{name} <dir>)")
 
 def hashes(p):
     s2, s5 = hashlib.sha256(), hashlib.sha512()

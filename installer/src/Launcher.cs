@@ -25,6 +25,7 @@ namespace ReleaseGate
         public string PackFolder = "";
         public bool PackCopy;                   // copy the pack instead of linking it with junctions
         public bool PackNoSaves;                // leave the pack's saves (BTASaves, ModSaves) out
+        public bool CombatSavesEnabled;         // opt in to the UCU combat-save shim for this install
 
         public static string Folder
         {
@@ -55,6 +56,7 @@ namespace ReleaseGate
                         case "PackFolder": s.PackFolder = v; break;
                         case "PackCopy": s.PackCopy = v == "1"; break;
                         case "PackNoSaves": s.PackNoSaves = v == "1"; break;
+                        case "CombatSavesEnabled": s.CombatSavesEnabled = v == "1"; break;
                     }
                 }
             }
@@ -75,6 +77,7 @@ namespace ReleaseGate
             b.Append("PackFolder=").Append(PackFolder).Append("\r\n");
             b.Append("PackCopy=").Append(PackCopy ? "1" : "0").Append("\r\n");
             b.Append("PackNoSaves=").Append(PackNoSaves ? "1" : "0").Append("\r\n");
+            b.Append("CombatSavesEnabled=").Append(CombatSavesEnabled ? "1" : "0").Append("\r\n");
             try
             {
                 Directory.CreateDirectory(Folder);
@@ -178,6 +181,41 @@ namespace ReleaseGate
         public static Process StartGame(string dest, LauncherSettings s)
         {
             return Process.Start(new ProcessStartInfo(Path.Combine(dest, "BattleTech.exe"), GameArguments(s)) { WorkingDirectory = dest, UseShellExecute = false });
+        }
+
+        public static string CombatSavesMarkerPath(string dest)
+        {
+            return Path.Combine(dest, "Mods", ".port", "bta-combat-saves.on");
+        }
+
+        public static bool CombatSavesEnabled(string dest)
+        {
+            return File.Exists(CombatSavesMarkerPath(dest));
+        }
+
+        /// <summary>Creates or removes only UCU's opt-in marker. Null on success, otherwise the reason it failed.</summary>
+        public static string SetCombatSavesEnabled(string dest, bool enabled)
+        {
+            string marker = CombatSavesMarkerPath(dest);
+            try
+            {
+                if (enabled)
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(marker));
+                    using (new FileStream(marker, FileMode.CreateNew, FileAccess.Write, FileShare.Read)) { }
+                }
+                else if (File.Exists(marker)) File.Delete(marker);
+                return null;
+            }
+            catch (IOException e)
+            {
+                if (enabled && File.Exists(marker)) return null; // another launcher instance created the marker
+                return e.Message;
+            }
+            catch (Exception e) when (e is UnauthorizedAccessException || e is ArgumentException || e is NotSupportedException || e is PathTooLongException)
+            {
+                return e.Message;
+            }
         }
 
         // ---- mod packs ----

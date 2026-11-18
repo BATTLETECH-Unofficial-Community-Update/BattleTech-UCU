@@ -1,5 +1,5 @@
 # Checks a BattleTech UCU install against a release's public manifest (ucu-manifest.tsv), with no help from the installer.
-#   powershell -ExecutionPolicy Bypass -File verify.ps1 -Install "D:\Games\BATTLETECH-UCU" [-Manifest <file or https URL>]
+#   powershell -ExecutionPolicy Bypass -File verify.ps1 -Install "<install>" [-Manifest <file or https URL>]
 # With no -Manifest it reads the copy the installer left in the install folder; compare that file's SHA-256 (printed below)
 # with the one in the release notes. Exit code 0 = every listed file matches; 1 = something differs.
 param(

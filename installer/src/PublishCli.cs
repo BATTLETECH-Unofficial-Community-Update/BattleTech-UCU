@@ -57,7 +57,7 @@ namespace ReleaseGate
                     case "check": Console.WriteLine(Check(new GitHub(need("--repo"), need("--token")), new GitHub(opt("--data-repo", DataRepoDefault), need("--token")), need("--tag"), log)); break;
                     case "upload":
                         Console.WriteLine(Upload(need("--assets"), need("--repo"), opt("--data-repo", DataRepoDefault), need("--token"), need("--master-secret"), need("--tag"),
-                            need("--name"), o.ContainsKey("--notes") ? File.ReadAllText(need("--notes")) : ManagerForm.DefaultNotes(need("--label")), !flags.Contains("--no-draft"), log));
+                            need("--name"), o.ContainsKey("--notes") ? File.ReadAllText(need("--notes")) : ManagerForm.DefaultNotes(need("--label"), opt("--changelog", null)), !flags.Contains("--no-draft"), log));
                         break;
                     case "verify":
                         string vm = need("--repo"), vd = opt("--data-repo", DataRepoDefault);

@@ -41,7 +41,7 @@ manifest key = HKDF(package key, salt = share, info = "manifest3")
 - **An old package key doesn't open a new release.** A player who dumps the package key from memory during one
   install can derive a blob's key only from the file's plaintext hash. Those hashes are in the manifest, and a new
   release's manifest needs that release's share. So a changed file stays locked; unchanged files they already have.
-- **The master secret** lives at `F:\Unity-Tools\ReleaseManager\keys\master-secret.txt` (beside the content key,
+- **The master secret** lives at `<workspace>\ReleaseManager\keys\master-secret.txt` (beside the content key,
   backed up the same way, never in the repository or a package) and as a Worker secret. If it leaks, make a new one:
   later releases use it, and earlier releases stay on the old one, or are retired.
 

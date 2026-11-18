@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 190" width="520" height="190" role="img" aria-labelledby="t d">
+  <title id="t">Mod packs on UCU</title>
+  <desc id="d">BattleTech Advanced (BTAU) and BattleTech Extended (BEX:T) each have a check mark. RogueTech is marked pending.</desc>
+  <rect x="0.5" y="0.5" width="519" height="189" rx="10" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="24" y="34" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#1f2328">Mod packs on UCU</text>
+
+  <g font-family="Segoe UI, Helvetica, Arial, sans-serif" text-anchor="middle">
+    <!-- BTAU -->
+    <rect x="24" y="50" width="146" height="120" rx="8" fill="#dafbe1" stroke="#1a7f37" stroke-width="2.5"/>
+    <circle cx="97" cy="94" r="17" fill="#1a7f37"/>
+    <path d="M88 94l6 6 11-12" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="97" y="134" font-size="15" font-weight="700" fill="#116329">BTAU</text>
+    <text x="97" y="154" font-size="12" fill="#116329">supported</text>
+    <!-- RogueTech -->
+    <rect x="187" y="50" width="146" height="120" rx="8" fill="#fff8c5" stroke="#9a6700" stroke-width="2.5"/>
+    <circle cx="260" cy="94" r="17" fill="#9a6700"/>
+    <path d="M260 83v11l7 5" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="260" y="134" font-size="15" font-weight="700" fill="#7d4e00">RogueTech</text>
+    <text x="260" y="154" font-size="12" fill="#7d4e00">pending</text>
+    <!-- BEX:T -->
+    <rect x="350" y="50" width="146" height="120" rx="8" fill="#dafbe1" stroke="#1a7f37" stroke-width="2.5"/>
+    <circle cx="423" cy="94" r="17" fill="#1a7f37"/>
+    <path d="M414 94l6 6 11-12" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="423" y="134" font-size="15" font-weight="700" fill="#116329">BEX:T</text>
+    <text x="423" y="154" font-size="12" fill="#116329">supported</text>
+  </g>
+</svg>

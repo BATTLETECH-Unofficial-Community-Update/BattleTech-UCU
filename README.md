@@ -2,6 +2,8 @@
 
 # BattleTech: Unofficial Community Update (UCU)
 
+A (lowercase h) harebrained scheme to port (uppercase) Harebrained Schemes' [*BATTLETECH*](https://www.paradoxinteractive.com/games/battletech) (Unity 2018.4) and all DLC to Unity 6. It adds campaign/career co-op, faster loading, several bugfixes, and an attempt to re-enable combat saves in the big modpacks using on-the-fly adaptations to numerous mods that complicate combat saves. Retail release (Steam or GOG) is required to run it.
+
 **[btucu.org](https://btucu.org)**
 
 ## Contents
@@ -13,7 +15,7 @@
 - [Linux and MacOS](#linux-and-macos)
 - [What's different from the 2018 retail game (and what isn't)](#whats-different-from-the-2018-retail-game-and-what-isnt)
 - [Installing and Running BattleTech: Unofficial Community Update](#installing-and-running-battletech-unofficial-community-update)
-- [Playing BattleTech Advanced (BTA) on UCU](#playing-battletech-advanced-bta-on-ucu)
+- [Mod packs on UCU](#mod-packs-on-ucu)
 - [For mod authors](#for-mod-authors)
 - [Who I am, and why this project](#who-i-am-and-why-this-project) ([A note on AI](#a-note-on-ai))
 - [Project Status](#project-status)
@@ -22,8 +24,6 @@
 - [Roadmap](#roadmap)
 - [Rights and Licensing](#rights-and-licensing)
 - [Credits](#credits)
-
-A (lowercase h) harebrained scheme to port (uppercase) Harebrained Schemes' [*BATTLETECH*](https://www.paradoxinteractive.com/games/battletech) (Unity 2018.4) and all DLC to Unity 6. It adds campaign/career co-op, faster loading and several bugfixes. Retail release (Steam or GOG) is required to run it.
 
 ## Disclaimers
 
@@ -37,18 +37,18 @@ This project is a personal, non-commercial effort and is not affiliated with Par
 
 **DISCORD**: [discord.btucu.org](https://discord.btucu.org)
 
-**BUGS**: [issues.btucu.org](https://issues.btucu.org) (the Issues tab on our GitHub repository). Create an issue and select the 'Bug report' template, which will tell you where to find your logs. For very large logs, use a Google Drive link.
+**BUGS**: [issues.btucu.org](https://issues.btucu.org) (the Issues tab on our GitHub repository). Create an issue and select the 'Bug report' template, which will tell you where to find your logs. The launcher's *Tools* tab also has a *Collect bug report* button that zips the game's and your mods' logs into one file, ready to attach. For very large logs, use a Google Drive link.
 
 **CONTACT**: info@btucu.org
 
 ## Current Release
 
-**Version 2.1.5-2B** (more simply: UCU Beta 2.5). ([Release Notes](CHANGELOG.md)). Version definitions have to stick to the retail numbering system, but we assign our own meaning to it:
+**Version 2.2.0-3B** (more simply: UCU Beta 3). ([Release Notes](CHANGELOG.md)). Version definitions have to stick to the retail numbering system, but we assign our own meaning to it:
 
 - **2**: Major release: 2.0 is defined as Unity 6-built feature parity with retail and its DLC along with bugfixes, optimizations, and the multiplayer changes below.
-- **1**: Minor release with new features or requirements, non-breaking changes backwards compatible within the major release line.
+- **2**: Minor release with new features or requirements, non-breaking changes backwards compatible within the major release line. A new minor release should indicate a significant fix or new feature.
 - **0**: Patchlevel: Bugfixes or minor corrections to the previous minor release.
-- **2B**: Build number and (A)lpha/(B)eta/(R)elease indicator. 
+- **3B**: Simplified release indicator: (A)lpha/(B)eta/(R)elease and the number ('Beta 3' in this example)
 
 The initial 2.0.0A line represented the development cycle from April 2026 to November 2026. Beta 1 was released publicly on November 13, 2026.
 
@@ -60,23 +60,26 @@ We are not game designers and we are not here to impose our vision upon BATTLETE
 
 ## Linux and MacOS
 
-Linux (Proton) is ready for testing. If you try it on Linux or a Steam Deck, please tell us how it went through the Issues link. Native Linux is more work but theoretically possible.
+Linux (Proton) is ready for testing. If you try it on Linux or a Steam Deck, please tell us how it went through the Issues link. We are trying to determine whether there is community interest in a native Linux install, or if Proton is sufficient. Submit feedback [here](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/23).
 
-MacOS is harder as I have no Mac hardware available for it. This will depend on somebody in the community who does coming on board, or my getting access to a gaming Mac.
+MacOS is harder for two reasons:
+
+- I have no Mac hardware available for it, so we would depend on somebody in the community who does coming on board, or my getting access to a gaming Mac
+- We'd be limited to Rosetta/x86 builds because that's what HBS released, and the commercial binaries required by the game (WWise for audio, Bink for video) did not include Apple native silicon versions. We cannot include non-commercial versions on our own, so PDX would have to acquire these and make them available in order for an Apple native edition to be contemplated (much less built). But if they do, we'll tackle it!
 
 ## What's different from the 2018 retail game (and what isn't)
 
 - **Campaign/Career multiplayer.** Retail multiplayer is skirmish-only and relied on multiplayer servers long since sunset (without mods). In 2.0, career and campaign mode support the host inviting up to three other players and assigning permissions for each guest (mech bay, store, hiring, barracks, etc). Everyone sees the Argo, and each player controls the 'Mechs assigned to them. On a mission with fewer 'Mechs than players, anyone not assigned to a 'mech is an observer.
 - **Faster loading.** A career save loads in about 17 seconds, down from 29 to 36 in our tests. A heavily modded save loads about a fifth faster.
 - **Retail bugs fixed.** Including multiplayer deadlocks, mortar strikes that lost their targets or fired twice on other players' screens, and more.
-- **Direct3D 12 is available.** This is a course for future development: D3D12 offers no performance or visual benefit for players (yet). Start the game with `-force-d3d12` to switch. 
-- **Mods still work.** ModTek and Harmony mods run with no rebuild. A BattleTech Advanced career has been played through a contract, salvage, and a save and reload, but additional testing is required.
+- **Direct3D 12 is available.** This is a course for future development: D3D12 offers no performance or visual benefit for players (yet). Pick it in the launcher's *Settings* tab, or start the game with `-force-d3d12`. 
+- **Mods still work.** ModTek and Harmony mods run with no rebuild. A BattleTech Advanced career has been played through a contract, salvage, and a save and reload, and BattleTech Extended starts a battle, but additional testing is required.
 - **Content is unchanged.** If we didn't have to change something to make it work in Unity 6 or with multiplayer, we didn't, other than bugfixes and optimizations.
 - **Paradox Online Services.** Paradox accounts work as in retail. Some analysis telemetry (app launch, hardware info) is sent to Paradox in retail but some of it was being rejected. We kept what was being accepted.
 
 See the [CHANGELOG](CHANGELOG.md) for the full list.
 
-2.0 is backward-compatible with retail saves. Multiplayer doesn't connect to retail 1.9.1 players. 
+2.0 is backward-compatible with retail saves (unless the save shim is enabled for modded games). Multiplayer doesn't connect to retail 1.9.1 players. 
 
 ## Installing and Running BattleTech: Unofficial Community Update
 
@@ -84,14 +87,31 @@ Releases are packaged into a launcher which has several layers of validation (so
 
 - The installer validates that you own Battletech (retail) through either Steam or GOG and issues a BT-UCU key based on that validation. That is used to download and decrypt the update. This happens automatically when you run the launcher.
 - Running the installed game validates that you own it on Steam (and multiplayer requires separate copies -- you can run the game from a shared family library, but only one player in any session can use that copy). The GOG version runs through GOG Galaxy.
+- GOG installs support GOG Galaxy and GOG achievements. If you add DLC after installing, run the installer again.
 
 The downside to all this validation is that you end up with larger install sizes, although not as large as the first few releases; we use hard links to pull in the retail files that UCU needs whenever possible, but there is no way around some copy bloat unless Paradox wants to adopt us, and we're not holding our breath!
 
 Updates to BT-UCU will update the installed folder in place. To uninstall, simply delete the folder. 
 
-## Playing BattleTech Advanced (BTA) on UCU
+## Mod packs on UCU
 
-From 2.1.0-2B, UCU can run mods through ModTek, including the BattleTech Advanced pack. BTA's own installer needs retail BATTLETECH 1.9.1 and won't install onto UCU, so you install BTA on retail as usual and then link it across from UCU's launcher. RogueTech and other ModTek packs link the same way.
+From 2.1.0-2B, UCU can run mods through ModTek. The big mod packs have their own installers, which need retail BATTLETECH 1.9.1 and won't install onto UCU, so you install a pack on retail as usual and then link it across from UCU's launcher.
+
+![Mod packs: BTAU and BEX:T are supported with a check mark; RogueTech is pending.](docs/mod-packs.svg)
+
+UCU supports BattleTech Advanced (BTAU) and BattleTech Extended: Tactics (BEX:T) and both have had a surface-level of testing in that they load into the Argo and combat without errors. RogueTech support is pending: it loads part of the way on UCU, but its own launcher is required to run it (see the table). At this time, if you encounter an issue with any of the modpacks, report it here rather than to the modpack maintainers, unless you can reproduce the same issue without UCU.
+
+Here is where each pack stands today. "Known compatibility level" means only what we have seen with our own eyes, and it changes from release to release.
+
+| Pack | Known compatibility level | What we have seen |
+|---|---|---|
+| [BattleTech Advanced (BTA, also called BTAU)](https://www.bta3062.com/index.php?title=Main_Page) 20.3 | **Good** | On Windows and Proton under Linux, it loads, and users have played a career through a contract, salvage and a save and reload.  |
+| [BattleTech Extended (BEX:T)](https://battletech-extended-3025.fandom.com/wiki/Getting_Started) | **Good** | It loads and starts a battle, as of 2.2.0-3B.
+| [RogueTech](https://roguetech.fandom.com/wiki/Roguetech_Wiki) | **Pending** | One of its mods, CustomUnitSpawn, failed to start and, as of 2.2.0-3B, now does. However, RogueTech's core then refuses to run, because RogueTech must be started through its own launcher, and that launcher needs the retail `BattleTech.exe`. The RogueTech team is reviewing options. |
+
+We expect other ModTek packs to link the same way, but we haven't tried any. If you try one, please tell us how it went through the Issues link, whether it worked or not.
+
+### Linking a pack (the BTA steps; we expect other packs to be the same)
 
 1. **Install BTA on your retail game** the way its authors describe, and start it once.
 2. **Install UCU with mod support on.** The installer has a *Mod support* box under "Install to", ticked by default. It puts the mod loader beside `BattleTech.exe`; without a `Mods` folder, UCU starts exactly as it does unmodded. Start UCU once.
@@ -112,7 +132,7 @@ Good to know:
 
 ## For mod authors
 
-Combat saves (saving in the middle of a battle) fail with most large mod packs, on the 2018 game too, which is why BTA turns them off. [Combat saves: notes for mod authors](docs/mod-authors-combat-saves.md) lists what a mod can change so that its combat saves load correctly on both games.
+Although (as of 2.2.0-3B) we have an experimental 'on-the-fly' solution that makes in-combat saves possible, this is a workaround.  Historically, combat (mid-battle) saves fail with most large mod packs, which is why they are typically turned off. We have a brief guide to what mod authors can do about this in [Combat saves: notes for mod authors](docs/mod-authors-combat-saves.md) so that its combat saves load correctly. 
 
 ## Who I am, and why this project
 
@@ -130,7 +150,7 @@ The below is a brief statement about AI usage in this project. For more detail, 
 
 There is an avalanche of AI slop projects. Built into the DNA of our project's mission is that we retain the discipline and focus to avoid that label. On the one hand, this project represents exactly the kind of effort that wasn't viable before AI; there's not enough money or other incentive for any of the commercial entities concerned to have undertaken it. But just because you can doesn't mean you should. 
 
-![AI Slop-O-Meter: lines of code the port adds and removes, as a share of retail's code, with new features counted apart from patches to retail's code.](docs/code-delta.svg)
+![AI Slop-O-Meter: lines of code UCU adds and removes, as a share of retail's code, with new features counted apart from patches to retail's code.](docs/code-delta.svg)
 
 Retail's own code is over a million lines.  We didn't want to fix what wasn't broke. 'Patches' counts changes we've made to retail code to bring it forward into Unity 6, fix a bug, or improve performance. New features are limited to multiplayer career/campaign mode.
 
@@ -144,19 +164,18 @@ Nobody wants new releases with breaking changes or significant alterations to fe
 
 The update is playable and (we hope) most of what's needed now is attention on some of the fiddly bits that a dedicated group of players will find in no time -- especially on career multiplayer. We've tested a lot, and at this point we need to stop and make sure the project has legs: if it does, we'll turn this into a community-driven beta since you all can test a lot better than any harness. What we have done is a lot of comparison and playthroughs to make sure that behavior matches retail and things draw properly.
 
-We've also maintained mod support and loaded Battletech Advanced, but we need the community's help doing playthroughs and testing other mods.
+We've also maintained mod support and loaded BattleTech Advanced and BattleTech Extended: Tactics, but we need the community's help doing playthroughs and testing other mods.
 
 ## Known Issues
 
-Places where the port means to match retail but doesn't quite yet. Deliberate changes are in [CHANGELOG.md](CHANGELOG.md).
+Places where UCU means to match retail but doesn't quite yet. Deliberate changes are in [CHANGELOG.md](CHANGELOG.md).
 
 - **Ground around large rocks** is about 5% darker than retail's, because the rocks block bounced light without bouncing any of their own.
 - **Urban maps:** Metro Green's light probes come out 7-8% brighter than retail's, and the bounce near its highway is warmer.
 - **Martian maps** look less red and less saturated than retail's, and their rocks show more contrast. This was measured at different times of day and isn't confirmed yet.
 - **Most maps** haven't been compared with retail side by side under the same weather, and decals have been measured only on Central Mountain and Still Valley.
 - **Portraits** read slightly darker than retail, mostly on the shaded side of the face, and one preset's hair tips look cyan.
-- **Memory in long sessions:** Memory use grows during a long session, about 1.5 GB above the original game after three missions and then about 200 MB per mission (around 9 GB after twelve). The original game also grows as you play. Restarting the game returns the memory. We are still working on it.
-- **Linux and Steam Deck (Proton):** Up to 2.1.0-2B, the main menu's animated background showed colour bars (vertical stripes) under Proton, because Proton can't play that video format. 2.1.1-2B converts the menu background and the small video screens on Urban Warfare city maps to a format Proton plays; on one Linux PC the menu video played under Proton, but the Urban Warfare screens have only been checked on Windows. The opening cinematic uses a different video format and plays; the story cutscenes use that same format, so they should play too, but they haven't been checked yet. Proton has been tested on one Linux PC (unmodded as far as the main menu, and with BattleTech Advanced through a skirmish), not on a Steam Deck, and the game needs a working sound system (PulseAudio or PipeWire, which desktops and SteamOS have) or it closes at start-up.
+- **Memory in long sessions** ([issue #22](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/22)): Memory use grows during a long session, about 1.5 GB above the original game after three missions and then about 200 MB per mission (around 9 GB after twelve). The original game also grows as you play. Restarting the game returns the memory. We are still working on it.
 
 ## Known Issues (Modders)
 
@@ -166,13 +185,13 @@ Things only someone running or writing mods would see.
 
 ## Visuals and lighting
 
-Most of our effort went into making the game look the way it did in 2018, because that is the hardest part to check. Rules can be tested: give the port and retail the same inputs and the results must match. Pictures, less so. Skirmish weather is picked at random, clouds drift and the camera pans, so two screenshots only compare fairly on the same map, weather, moment and view, and someone still has to judge which differences matter. We've compared several maps closely, but not all of them in every weather.
+Most of our effort went into making the game look the way it did in 2018, because that is the hardest part to check. Rules can be tested: give UCU and retail the same inputs and the results must match. Pictures, less so. Skirmish weather is picked at random, clouds drift and the camera pans, so two screenshots only compare fairly on the same map, weather, moment and view, and someone still has to judge which differences matter. We've compared several maps closely, but not all of them in every weather.
 
-Why the port can look different from retail:
+Why UCU can look different from retail:
 
 - **Shaders** ship only as compiled code. We rebuilt each one from that code and check it against retail's, but a shader that failed to rebuild or load draws wrong.
 - **Bounced light** (realtime GI) had to be baked again. Unity 6 couldn't bake retail's maps with retail's settings, so each map is rebaked from retail's own layout. It comes close to retail but isn't identical. Would you notice if we didn't tell you? Is it an issue? You tell us.
-- **Textures and materials** went through Unity 6's importer, which changed defaults that retail relied on.
+- **Textures and materials:** Unity 6's importer changed defaults that retail relied on for some textures and materials. UCU now uses the 2018 game's own image data for many textures.
 
 Signs of something we should know about:
 
@@ -188,10 +207,10 @@ Small shifts of a few percent in brightness or colour are expected and listed be
 
 Our priorities:
 
-- **Mid-battle saves with mods.** Some mods make saving in the middle of a battle unreliable. We'd like to make it easier to get this working again with a 'shim' that adjusts the game's behavior on-the-fly when mods encountering these issues are loaded.
 - **Your feedback.** This has been our pet project for the last seven months; now it's up to you to put the 'UC' in this update.
 - **Career and campaign co-op.** Since this is the flagship feature, we'd like to reduce any further barriers to people playing Battletech together!
 - **Direct3D 12.** Still very much a 'maybe' but we'll be exploring the possibilities and ramifications.
+- **CoreCLR** (long-term) replacing the Mono runtime with CoreCLR in Unity 7 is a big investment but one with significant dividends. 
 
 ## Rights and Licensing
 

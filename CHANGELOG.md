@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.2.0-3B (BT-UCU Beta 3)
+
+- **Experimental: in-mission saves with mod packs.** Big mod packs turn off saving in the middle of a mission because those saves often can't be loaded again. The launcher's *Mods* tab now has a checkbox, "EXPERIMENTAL: Enable in-mission saves", off by default. With it on, UCU makes on-the-fly changes to several mods that facilitate their behavior with respect to serializing game state in save files (IRTweaks, CustomUnits, MissionControl, ExpandedInitiative, CustomAmmoCategories, StartDialogue and MechEngineer), each applied only when its mod is loaded. The checkbox warns to keep saving before and after missions, because the feature is new, and that these saves can only be loaded by UCU with the option on. With it off, the game saves as the original game does.
+- **Big drops no longer stall the battle** ([issue #14](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/14)). With many units dropping at once (e.g. a modpack allowing 14 player units), the battle stalled for over a minute before the first turn, with the game running at a few frames per second. On the reporter's save in the editor, the first player turn came 26 seconds after the mission started instead of 85, and the game stayed smooth.
+- **Co-op with mods: the joining player's mission starts** ([issue #20](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/20)). With BattleTech Advanced's MissionControl mod, a joining player's game never loaded the mission and the host stayed on "waiting on other player". UCU started the joining player's contract through a different call from the one MissionControl hooks, so the mod's setup never ran there. The joining player now starts it the way the original game does.
+- **Mods that change buying a 'Mech load again.** Some BattleTech Extended and BattleTech Advanced mods (Quirks, Quirks Plus, Roles, IRTweaks, EngineSize) failed to load because UCU's co-op purchase check sat inside the game's code for adding a 'Mech, where those mods insert their own changes by position. The check now runs from the code that calls it, so that code matches the original game.
+- **Co-op chat can be minimized.** In career and campaign co-op, a "-" tab on the chat panel's top edge folds the chat down to a "CHAT +" bar, and a click on the bar brings it back. Messages that arrive while it's folded are there when you reopen it, and opening the chat to type (T or the chat button) reopens it too. The choice lasts for the session and covers the Argo, mission setup and the battle map. On the battle map, the minimize tab sits above the mute and chat buttons.
+- **Textures use the original game's image data.** Textures now use the 2018 game's own image data (from your existing install) instead of copies that Unity 6 had re-encoded. This reduces the build size by about 1/3 and should solve some texture-related issues.
+- **BattleTech Extended: Tactics combat loads.** Starting a battle with BattleTech Extended stuck on "Preparing for Combat", because one of its mods (BTDebug) looks up two of the game's drawing shaders by name and UCU's newer Unity couldn't find them. UCU's mod loader now supplies them only when that mod is present. 
+- **RogueTech: CustomUnitSpawn loads.** The CustomUnitSpawn mod included with RogueTech failed to start on UCU, because it asks Unity's random-number calls for their arguments by the names `min` and `max`, which Unity 6 renamed. UCU's mod loader now answers to the old names, and only when that mod is present. RogueTech is not yet compatible due to a hard requirement to use the RT launcher which itself has a hard requirement to use the retail .exe; the RT team is reviewing options.
+- **Changing gamma or quality no longer minimizes the game.** Confirming a gamma or quality change in the Video settings made the game window minimize. When you confirmed, the game re-applied the display mode even though nothing about the display had changed, and on UCU's newer Unity that restarts the window-mode switch and minimizes the window. The game now re-applies the display mode only when the resolution changes or, in fullscreen, the monitor does, and the windowed toggle still works as before.
+- **Cosmetic retail bug in contract results page fixed.** On some contracts, the expanded 'objectives' rollout would say 'Contract payment increased by ERROR: resolving 'ToPercentSTring' on 0.1 Exception Type 'System.REflection.ReflectionTypeLoadException' was thrown. Could not load file or assembly 'MonoMod.Core,Version=1.2.2.0, Culture=neutral, PublicKeyToken=null' or one of its dependencies.' This was harmless and did not affect the outcome of the contract or otherwise interrupt the game, but it is fixed.
+- **DLC 'Mechs select faster and use less memory.** Selecting a 'Mech from Heavy Metal, Flashpoint or Urban Warfare for the first time in the Mech Bay froze the game for about four seconds in our test, and now takes under a tenth of a second. The DLC files carried their own copies of the game's shaders, built for the old Unity. UCU now points them at the shaders built for Unity 6, in memory when the game starts, and your own DLC files are never changed. Memory use with the DLCs is also about 480 MB lower.
+
+
 ## 2.1.5-2B (BT-UCU Beta 2.5)
 
 - **GOG support.** UCU now runs on both the GOG and Steam editions of BATTLETECH. On a GOG install,
@@ -17,9 +32,10 @@
   newest release and starts the game; *Install / Update* is the installer; *Mods* turns mod support on or off and links
   or copies a mod pack you installed for retail BATTLETECH (BattleTech Advanced, RogueTech, or another ModTek pack), so
   `Link BTA.cmd` is no longer needed; *Settings* picks DirectX 11 or 12 (12 has no benefit yet) and extra launch
-  options; *Tools* verifies the install, opens the log and save-backup folders, and makes a desktop or Start menu
-  shortcut. After installing, the launcher keeps a copy of itself in the install folder as `BattleTech UCU
-  Launcher.exe`, so you no longer need the download to update. RogueTech has not been tested on UCU yet.
+  options; *Tools* verifies the install, opens the log and save-backup folders, collects a bug report (one zip of
+  the game's and your mods' logs, ready to attach to a GitHub issue), and makes a desktop or Start menu shortcut.
+  After installing, the launcher keeps a copy of itself in the install folder as `BattleTech UCU Launcher.exe`, so
+  you no longer need the download to update. RogueTech has not been tested on UCU yet.
 - **Mod packs on Linux and Steam Deck** ([issue #13](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/13)). Under Proton, BattleTech Advanced 20.3 and other packs on ModTek 4.4.x no
   longer get stuck repeating an error while they load ("ModTek died"). The MonoMod library that ships with ModTek 4.4.x could write
   broken jumps in the game's code when the memory next to that code was full, which happens with UCU's newer Unity
@@ -193,9 +209,9 @@ Changes in version **2.0.0-1B** of the BattleTech: Unofficial Community Update (
 - **Chat and Settings.** The co-op chat sits below an open Settings menu or the host's Multiplayer panel, so its title no
   longer covers the KEYBINDINGS tab on wide screens or a guest's permission boxes.
 - **Game version for mods.** The game reports retail's version, 1.9.1, again, so a mod that names 1.9 or 1.9.1 as its
-  game version loads as it does on retail, and retail no longer reads new saves as from a newer build. The port's own
+  game version loads as it does on retail, and retail no longer reads new saves as from a newer build. UCU's own
   version, 2.0.0, is in `VersionInfo.PortVersion`; the main menu and multiplayer use it. Saves from earlier port builds
-  still load in the port.
+  still load in UCU.
 - **Crew conversations in co-op.** Guests now see the host's crew conversations and story cinematics, replayed on their
   own screen at their own pace. A guest with the Decisions permission can pick replies (as can the host). A guest busy elsewhere sees the
   scene from the start once free, then returns to where it was. Each player skips a cinematic alone; crew chats show
@@ -331,7 +347,7 @@ Elsewhere:
 
 - Concurrent Vexe reflection builders crashed natively. They now lock the shared emitter.
 - A Steam read refused during a concurrent write reported success, handing the deserializer an empty buffer. Retail tears
-  246 of 256 overlapped loads; the port delivers all 256.
+  246 of 256 overlapped loads; UCU delivers all 256.
 - Every quit logged a CRITICAL ERROR from analytics.
 - Each tree teardown leaked a culling group.
 - `Shop.Purchase` lowered stock before checking funds, so a buy the company couldn't pay for still used up the item.
@@ -383,7 +399,6 @@ These keep retail's behaviour where retail's code or data doesn't work as shippe
 - Replaces 2018 Unity API calls, with an exact `GetInstanceID` helper. `BTLight.CompareTo` keeps the real call because a
   ModTek injector patches it.
 - Updates HBS's TextMeshPro and uGUI wrappers for current packages.
-- Hand corrections to decompiler output, and Unity's API updater output applied as a reviewed patch.
 - Drops a duplicate `AssemblyVersion`.
 - Removes a `GetControlID` call that threw outside `OnGUI` and stopped the debug console loading its history.
 - **Assemblies.** HBS code compiles into `Assembly-CSharp` and `Assembly-CSharp-firstpass`, the names retail's bundles reference.
@@ -427,11 +442,11 @@ These keep retail's behaviour where retail's code or data doesn't work as shippe
   crew vary their idles.
 - **Star map.** The 21 VFX prefabs behind `StarPrototype` are staged, which ends an exception when a flashpoint is available.
 - **Selectables.** Unity 6's default Selected colour replaced retail's highlight. Fixed in 14 prefabs.
-- **Prefab references.** Retail references restored where they named nothing in the port.
+- **Prefab references.** Retail references restored where they named nothing in UCU.
 - **uGUI package.** The game camera, the movement reticle and the quality settings list still named Unity 2018's UI DLL, which
   a player build can't find. They now name the uGUI package.
 - **Script references.** 747 SVG documents and eight Raw Cliffsides dialog images named script GUIDs from the rip. They're
-  rebound to the port's SVG Importer.
+  rebound to UCU's SVG Importer.
 - **Ellipsis.** Unity 6's TextMeshPro looked the ellipsis up only in the bold or italic font slot, which BattleTech's fonts leave
   empty, so bold text cut off without one. It falls back to the regular weight, as retail did.
 - **Credits.** Each slide was loaded three times, so the slideshow showed every slide three times at a third of retail's pace.

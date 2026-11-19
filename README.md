@@ -101,7 +101,7 @@ From 2.1.0-2B, UCU can run mods through ModTek. The big mod packs have their own
 
 UCU supports BattleTech Advanced (BTAU) and BattleTech Extended: Tactics (BEX:T) and both have had a surface-level of testing in that they load into the Argo and combat without errors. RogueTech support is pending: it loads part of the way on UCU, but its own launcher is required to run it (see the table). At this time, if you encounter an issue with any of the modpacks, report it here rather than to the modpack maintainers, unless you can reproduce the same issue without UCU.
 
-Here is where each pack stands today. "Known compatibility level" means only what we have seen with our own eyes, and it changes from release to release.
+Here is where each pack stands today (to the best of our knowledge -- please report an issue if you find otherwise!)
 
 | Pack | Known compatibility level | What we have seen |
 |---|---|---|
@@ -109,7 +109,7 @@ Here is where each pack stands today. "Known compatibility level" means only wha
 | [BattleTech Extended (BEX:T)](https://battletech-extended-3025.fandom.com/wiki/Getting_Started) | **Good** | It loads and starts a battle, as of 2.2.0-3B.
 | [RogueTech](https://roguetech.fandom.com/wiki/Roguetech_Wiki) | **Pending** | One of its mods, CustomUnitSpawn, failed to start and, as of 2.2.0-3B, now does. However, RogueTech's core then refuses to run, because RogueTech must be started through its own launcher, and that launcher needs the retail `BattleTech.exe`. The RogueTech team is reviewing options. |
 
-We expect other ModTek packs to link the same way, but we haven't tried any. If you try one, please tell us how it went through the Issues link, whether it worked or not.
+Any ModTek pack should work the same way. If you try one, please tell us how it went through the Issues link, whether it worked or not.
 
 ### Linking a pack (the BTA steps; we expect other packs to be the same)
 

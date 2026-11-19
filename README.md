@@ -43,12 +43,14 @@ This project is a personal, non-commercial effort and is not affiliated with Par
 
 ## Current Release
 
-**Version 2.2.0-3B** (more simply: UCU Beta 3). ([Release Notes](CHANGELOG.md)). Version definitions have to stick to the retail numbering system, but we assign our own meaning to it:
+<!-- release-version -->
+**Version 2.2.1-3B** (more simply: UCU Beta 3.1). ([Release Notes](CHANGELOG.md)). Version definitions have to stick to the retail numbering system, but we assign our own meaning to it:
 
 - **2**: Major release: 2.0 is defined as Unity 6-built feature parity with retail and its DLC along with bugfixes, optimizations, and the multiplayer changes below.
 - **2**: Minor release with new features or requirements, non-breaking changes backwards compatible within the major release line. A new minor release should indicate a significant fix or new feature.
-- **0**: Patchlevel: Bugfixes or minor corrections to the previous minor release.
+- **1**: Patchlevel: Bugfixes or minor corrections to the previous minor release.
 - **3B**: Simplified release indicator: (A)lpha/(B)eta/(R)elease and the number ('Beta 3' in this example)
+<!-- /release-version -->
 
 The initial 2.0.0A line represented the development cycle from April 2026 to November 2026. Beta 1 was released publicly on November 13, 2026.
 

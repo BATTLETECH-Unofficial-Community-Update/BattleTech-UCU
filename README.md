@@ -132,7 +132,12 @@ Good to know:
 
 ## For mod authors
 
-Although (as of 2.2.0-3B) we have an experimental 'on-the-fly' solution that makes in-combat saves possible, this is a workaround.  Historically, combat (mid-battle) saves fail with most large mod packs, which is why they are typically turned off. We have a brief guide to what mod authors can do about this in [Combat saves: notes for mod authors](docs/mod-authors-combat-saves.md) so that its combat saves load correctly. 
+UCU runs stock ModTek mods, and a few of them need help from UCU's mod loader. [What UCU changes for each mod](docs/mods/README.md) is the place to start. It lists every such change, mod by mod, in a short note for each mod (ModTek, CustomUnits, CustomAmmoCategories, MissionControl, IRTweaks, MechEngineer and others): what broke, what UCU does about it, and what the mod could change so it needs no help. It also covers:
+
+- **The adapters themselves.** They are UCU's own Harmony patches, applied in memory only when their mod loads, with the source in [`tools/mod-bootstrap/`](tools/mod-bootstrap/). Nothing on disk, in your mods or in the game, is changed.
+- **Fixes in UCU's game code that help mods.** For example, the multiplayer content check now lets two players with the same mod pack join each other, and a retail bug that could leave a modded combat load running forever is fixed. These are described in words, because that code isn't published.
+- **Co-op with mods**, for the mods that need help staying in step between players.
+- **Combat saves.** Several adapters exist for the experimental in-mission saves option (launcher → *Mods*, off by default). A separate guide, [Combat saves: notes for mod authors](docs/mod-authors-combat-saves.md), explains why mod saves fail and what a mod can do so it saves and loads correctly without any help.
 
 ## Who I am, and why this project
 

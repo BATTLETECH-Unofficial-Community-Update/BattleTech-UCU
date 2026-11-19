@@ -3,7 +3,7 @@
 BattleTech's combat saves fail with most large ModTek packs, which is why packs such as BattleTech Advanced turn them
 off. UCU 2.2.0-3B includes an experimental save shim, off by default (the launcher's *Mods* tab, "EXPERIMENTAL: Enable
 in-mission saves"), that works around these failures from outside the mods by making on-the-fly changes to a number of
-them. It only patches over the symptoms. A mod that follows the points below saves and loads correctly on its own, on the
+them ([what UCU changes for each mod](mods/README.md)). It only patches over the symptoms. A mod that follows the points below saves and loads correctly on its own, on the
 2018 game and on UCU, and needs no shim.
 
 Every point comes from a problem we saw on a real BattleTech Advanced 20.3 combat save, or found by reading the game's

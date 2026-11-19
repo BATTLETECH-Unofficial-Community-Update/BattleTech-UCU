@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- References mscorlib and ModTek's 0Harmony and Mono.Cecil only: see the note at the top of ModBootstrap.cs.
+       dotnet build -p:ManagedDir=<player>\BattleTech_Data\Managed -p:ModTekLib=<game>\Mods\ModTek\lib -->
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <OutputType>Library</OutputType>
+    <AssemblyName>BattleTechPortBootstrap</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <NoStdLib>true</NoStdLib>
+    <NoCompilerStandardLib>true</NoCompilerStandardLib>
+    <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+    <AutomaticallyUseReferenceAssemblyPackages>false</AutomaticallyUseReferenceAssemblyPackages>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <ManagedDir Condition="'$(ManagedDir)' == ''">$(MSBuildThisFileDirectory)..\..\..\transplant-gate\logic-modtek-probe\player\BattleTech_Data\Managed</ManagedDir>
+  </PropertyGroup>
+  <Target Name="CheckInputs" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(ModTekLib)' == ''" Text="set ModTekLib to the folder holding ModTek's lib DLLs (property or environment variable)" />
+    <Error Condition="!Exists('$(ManagedDir)\mscorlib.dll')" Text="ManagedDir does not hold a player's Managed folder: $(ManagedDir)" />
+    <Error Condition="!Exists('$(ModTekLib)\0Harmony.dll')" Text="ModTekLib does not hold ModTek's lib: $(ModTekLib)" />
+  </Target>
+  <ItemGroup>
+    <!-- MissionControlEncounter/ is its own project (it references the game). It is built first and embedded here as a
+         resource, so ModSupport still ships one bootstrap DLL; MissionControlSaveCompat loads it only with MissionControl. -->
+    <Compile Remove="MissionControlEncounter\**" />
+    <None Remove="MissionControlEncounter\**" />
+  </ItemGroup>
+  <Target Name="EmbedMissionControlEncounter" BeforeTargets="PrepareForBuild">
+    <MSBuild Projects="MissionControlEncounter\BattleTechPortBootstrap.MissionControl.csproj" Targets="Restore;Build"
+             Properties="Configuration=$(Configuration);ManagedDir=$(ManagedDir);ModTekLib=$(ModTekLib);OutDir=$(MSBuildProjectDirectory)\obj\mce\" />
+    <ItemGroup>
+      <EmbeddedResource Include="$(MSBuildProjectDirectory)\obj\mce\BattleTechPortBootstrap.MissionControl.dll" LogicalName="BattleTechPortBootstrap.MissionControl.dll" />
+    </ItemGroup>
+  </Target>
+  <ItemGroup>
+    <Compile Include="..\transplant\port\HBS\Assembly-CSharp\BattleTech.Serialization.Utility\CombatSavesRuntimeGate.cs" Link="CombatSavesRuntimeGate.cs" />
+    <Reference Include="mscorlib"><HintPath>$(ManagedDir)\mscorlib.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>$(ModTekLib)\0Harmony.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Mono.Cecil"><HintPath>$(ModTekLib)\Mono.Cecil.dll</HintPath><Private>false</Private></Reference>
+    <!-- PR308Guard.cs subclasses MonoMod.Core 1.2.x's QueryingMemoryPageAllocatorBase: build against a ModTek 4.4.x lib. -->
+    <Reference Include="MonoMod.Core"><HintPath>$(ModTekLib)\MonoMod.Core.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

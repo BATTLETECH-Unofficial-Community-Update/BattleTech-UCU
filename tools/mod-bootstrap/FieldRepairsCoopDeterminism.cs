@@ -94,11 +94,12 @@ namespace BattleTechPort
             __state = null;
             try
             {
-                if (salt == null) return;
+                if (salt == null) { Note("scope-skipped-no-contract", __originalMethod.Name); return; }
                 string site = __originalMethod.Name;
                 string unit = __args != null && __args.Length > 0 ? Get(__args[0], "GUID") as string ?? "" : "";
                 ulong h = Fnv64(salt + "|fieldrepairs|" + site + "|" + unit);
                 var seeded = new LoggingRandom((int)(uint)(h ^ (h >> 32)), site + "|" + unit);
+                Note("scope-enter", site + "|" + unit);
                 object outer = randomField.GetValue(null);
                 randomField.SetValue(null, seeded);
                 if (!ReferenceEquals(randomField.GetValue(null), seeded))
@@ -109,6 +110,15 @@ namespace BattleTechPort
                 __state = outer;
             }
             catch (Exception ex) { log("fieldrepairs-coop|swap-failed|" + ex.GetType().Name + ": " + ex.Message); }
+        }
+
+        // Diagnostics: first 5 of each kind (scope entries, scopes skipped for want of a contract GUID), so a silent run shows which case it was.
+        static readonly Dictionary<string, int> notes = new Dictionary<string, int>();
+        static void Note(string kind, string text)
+        {
+            int n;
+            lock (notes) { notes.TryGetValue(kind, out n); notes[kind] = ++n; }
+            if (n <= 5) log("fieldrepairs-coop|" + kind + "|" + text + "|n=" + n);
         }
 
         static void SwapFinalizer(object __state)
@@ -146,7 +156,7 @@ namespace BattleTechPort
             public ProxyRandom(Random inner) { this.inner = inner; }
             void Watch()
             {
-                if (salt == null) return;
+                if (salt == null) { Note("pre-contract-draw", Caller()); return; }
                 try
                 {
                     var frames = new System.Diagnostics.StackTrace(2, false).GetFrames();
@@ -163,6 +173,20 @@ namespace BattleTechPort
                     if (n <= 5 || n % 50 == 0) log("fieldrepairs-coop|unseeded-draw|" + caller + "|n=" + n);
                 }
                 catch (Exception ex) { log("fieldrepairs-coop|unseeded-draw|watch-failed " + ex.Message); }
+            }
+            static string Caller()
+            {
+                try
+                {
+                    var frames = new System.Diagnostics.StackTrace(3, false).GetFrames();
+                    for (int i = 0; frames != null && i < frames.Length; i++)
+                    {
+                        MethodBase m = frames[i].GetMethod();
+                        if (m != null && m.DeclaringType != null && m.DeclaringType != typeof(ProxyRandom)) return m.DeclaringType.Name + "::" + m.Name;
+                    }
+                }
+                catch { }
+                return "?";
             }
             public override int Next() { Watch(); return inner.Next(); }
             public override int Next(int max) { Watch(); return inner.Next(max); }

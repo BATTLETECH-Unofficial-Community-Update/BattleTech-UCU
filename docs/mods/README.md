@@ -6,8 +6,7 @@ the mod could change upstream so it needs no help.
 
 **What's here.** The adapters are UCU's own code, in [`tools/mod-bootstrap/`](../../tools/mod-bootstrap/). They are
 Harmony patches applied in memory while the game runs, and each one is applied only when its mod's assembly loads.
-No mod file and no game file changes on disk. Some fixes live in UCU's own copy of the game code instead. That code
-is derived from the retail game, so it isn't published; those fixes are described in words below, and each note says
+No mod file and no game file changes on disk. Some fixes live in UCU's own copy of the game code instead.  That code isn't published; those fixes are described below, and each note says
 whether its adapter depends on one.
 
 **Combat saves.** Combat (mid-battle) saves fail with most large mod packs, which is why such packs typically turn them

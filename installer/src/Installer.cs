@@ -359,7 +359,11 @@ namespace ReleaseGate
             if (full.StartsWith(r, StringComparison.OrdinalIgnoreCase))
                 return "Install somewhere outside your BATTLETECH folder. The original game stays as it is.";
             string pkg = Path.GetFullPath(PackageFolder).TrimEnd('\\') + "\\";
-            if (full.StartsWith(pkg, StringComparison.OrdinalIgnoreCase)) return "Install somewhere outside this package folder.";
+            // Only a folder that holds the package is protected. The launcher copy sits in the install it updates, and an
+            // installer may sit at a drive root or above the install: neither holds package.vault (issue 27).
+            if (full.StartsWith(pkg, StringComparison.OrdinalIgnoreCase)
+                && (File.Exists(Path.Combine(PackageFolder, Gate.VaultName)) || Parts.ContainsKey(Gate.VaultName)))
+                return "Install somewhere outside this package folder.";
             try { space = PlanInstall(c, full).Space; }
             catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
             {

@@ -240,8 +240,9 @@ namespace ReleaseGate
                 var names = new List<string> { Path.GetFileName((folder ?? "").TrimEnd('\\')) };
                 string mods = Path.Combine(folder, "Mods");
                 if (Directory.Exists(mods)) names.AddRange(Directory.GetDirectories(mods).Select(Path.GetFileName));
-                if (names.Any(n => n.IndexOf("RogueTech", StringComparison.OrdinalIgnoreCase) >= 0)) return PackRogueTech;
+                // BTA first: it ships a "RogueTechPerfFix" mod, so a RogueTech-first test called every BTA install RogueTech (issue 25).
                 if (names.Any(n => n.IndexOf("BT Advanced", StringComparison.OrdinalIgnoreCase) >= 0 || n.IndexOf("BTA", StringComparison.Ordinal) >= 0 || n.IndexOf("BattleTech Advanced", StringComparison.OrdinalIgnoreCase) >= 0)) return PackBta;
+                if (names.Any(n => n.IndexOf("RogueTech", StringComparison.OrdinalIgnoreCase) >= 0)) return PackRogueTech;
             }
             catch (Exception e) when (e is ArgumentException || e is NotSupportedException || e is IOException || e is UnauthorizedAccessException) { }
             return null;

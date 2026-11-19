@@ -67,11 +67,12 @@ namespace ReleaseGate
         readonly System.Windows.Forms.Timer _settle = new System.Windows.Forms.Timer { Interval = 350 };
         readonly System.Windows.Forms.Timer _tick = new System.Windows.Forms.Timer { Interval = 150 };
         readonly System.Windows.Forms.Timer _planSettle = new System.Windows.Forms.Timer { Interval = 400 };
+        readonly System.Windows.Forms.Timer _destSettle = new System.Windows.Forms.Timer { Interval = 300 };
 
         RetailCheck _check;
         InstallProgress _progress;
         CancellationTokenSource _stop;
-        int _checkId, _planId;
+        int _checkId, _planId, _destId;
         bool _destEdited, _settingDest, _installing, _installed, _opening;
         string _source = Remote.DefaultSource;
         volatile string _phase = "Installing";
@@ -106,6 +107,7 @@ namespace ReleaseGate
             SuspendLayout();
             Text = Title;
             Name = "SetupForm";
+            Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? Icon;   // the exe's own icon (ucu.ico, via build.ps1)
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
             Font = SystemFonts.MessageBoxFont;
@@ -164,6 +166,7 @@ namespace ReleaseGate
             _settle.Tick += (s, e) => { _settle.Stop(); RunCheck(); };
             _tick.Tick += (s, e) => ShowProgress();
             _planSettle.Tick += (s, e) => { _planSettle.Stop(); PlanDest(); };
+            _destSettle.Tick += (s, e) => { _destSettle.Stop(); RunDestCheck(); };
             _updates.Click += (s, e) => OpenRemote(_source);
             _browseRetail.Click += (s, e) => Browse(_retail, "Choose the folder that holds BattleTech.exe");
             _browseDest.Click += (s, e) => Browse(_dest, "Choose where to install");
@@ -289,34 +292,78 @@ namespace ReleaseGate
             }, TaskScheduler.FromCurrentSynchronizationContext());
         }
 
+        /// <summary>
+        /// A busy bar for the folder reads below. Reading an existing install (Installer.CheckDest, PlanInstall) compares
+        /// every file with the package and takes tens of seconds, so it runs off the UI thread while the bar animates.
+        /// Not while an install or check owns the bar.
+        /// </summary>
+        void Busy(bool on)
+        {
+            if (_installing) return;
+            _bar.Style = on ? ProgressBarStyle.Marquee : ProgressBarStyle.Continuous;
+            if (!on) _bar.Value = 0;
+        }
+
         void ShowDest()
         {
+            _destSettle.Stop();
+            _planSettle.Stop();
+            ++_planId;
+            ++_destId;
             if (_check == null || _check.Problem != null)
             {
                 Show(_destNote, "", Good);
                 _go.Enabled = false;
+                Busy(false);
                 return;
             }
-            long space;
-            string problem = Installer.CheckDest(_dest.Text, _check, out space);
-            _planSettle.Stop();
-            ++_planId;
-            if (problem != null) Show(_destNote, problem, Bad);
-            else if (Installer.Remote != null)
+            // Debounced: typing a path would otherwise start a read per keystroke.
+            _go.Enabled = false;
+            Show(_destNote, "Reading that folder...", SystemColors.ControlText);
+            Busy(true);
+            _destSettle.Start();
+        }
+
+        void RunDestCheck()
+        {
+            if (_check == null || _check.Problem != null) return;
+            int id = _destId;
+            RetailCheck check = _check;
+            string typed = _dest.Text;
+            Task.Run(() =>
             {
-                Show(_destNote, "Checking what to download...", SystemColors.ControlText);
-                _planSettle.Start();
-            }
-            else
+                long s;
+                string p = Installer.CheckDest(typed, check, out s);
+                return Tuple.Create(p, s);
+            }).ContinueWith(t =>
             {
-                string dest = _dest.Text.Trim().Trim('"');
-                string link = Installer.LinkNote(_check, dest);
-                string used = space < Installer.FreshSpace(_check, dest)
-                    ? string.Format("Part of the game is already here; {0:F1} GiB more will be used.", space / 1073741824.0)
-                    : string.Format("{0:F1} GiB will be used.", space / 1073741824.0);
-                Show(_destNote, link.Length > 0 ? used + " " + link : used, Good);
-            }
-            _go.Enabled = problem == null && !_installing;
+                if (id != _destId || IsDisposed) return;
+                Busy(false);
+                if (t.IsFaulted)
+                {
+                    Show(_destNote, "That folder can't be read: " + t.Exception.GetBaseException().Message, Bad);
+                    _go.Enabled = false;
+                    return;
+                }
+                string problem = t.Result.Item1;
+                long space = t.Result.Item2;
+                if (problem != null) Show(_destNote, problem, Bad);
+                else if (Installer.Remote != null)
+                {
+                    Show(_destNote, "Checking what to download...", SystemColors.ControlText);
+                    _planSettle.Start();
+                }
+                else
+                {
+                    string dest = _dest.Text.Trim().Trim('"');
+                    string link = Installer.LinkNote(check, dest);
+                    string used = space < Installer.FreshSpace(check, dest)
+                        ? string.Format("Part of the game is already here; {0:F1} GiB more will be used.", space / 1073741824.0)
+                        : string.Format("{0:F1} GiB will be used.", space / 1073741824.0);
+                    Show(_destNote, link.Length > 0 ? used + " " + link : used, Good);
+                }
+                _go.Enabled = problem == null && !_installing;
+            }, TaskScheduler.FromCurrentSynchronizationContext());
         }
 
         /// <summary>Online installs: says what this destination still needs, and names the button Update when it holds an install.</summary>
@@ -328,9 +375,11 @@ namespace ReleaseGate
             string dest;
             try { dest = DestFull(); }
             catch (Exception e) when (e is ArgumentException || e is NotSupportedException || e is PathTooLongException) { return; }
+            Busy(true);
             Task.Run(() => Installer.PlanInstall(check, dest)).ContinueWith(t =>
             {
                 if (id != _planId || IsDisposed || _installing) return;
+                Busy(false);
                 if (t.IsFaulted)
                 {
                     Show(_destNote, "That folder can't be read: " + t.Exception.GetBaseException().Message, Bad);
@@ -565,6 +614,7 @@ namespace ReleaseGate
         void ShowProgress()
         {
             long done = Interlocked.Read(ref _progress.Done), total = Math.Max(1, _progress.Total);
+            _bar.Style = ProgressBarStyle.Continuous;   // a folder read may have left it animating
             _bar.Value = (int)Math.Min(_bar.Maximum, done * _bar.Maximum / total);
             Show(_status, string.Format("{0}... {1} of {2}", _phase, Amount(done), Amount(total)), SystemColors.ControlText);
         }

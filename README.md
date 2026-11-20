@@ -44,11 +44,11 @@ This project is a personal, non-commercial effort and is not affiliated with Par
 ## Current Release
 
 <!-- release-version -->
-**Version 2.2.2-3B** (more simply: UCU Beta 3.2). ([Release Notes](CHANGELOG.md)). Version definitions have to stick to the retail numbering system, but we assign our own meaning to it:
+**Version 2.2.3-3B** (more simply: UCU Beta 3.3). ([Release Notes](CHANGELOG.md)). Version definitions have to stick to the retail numbering system, but we assign our own meaning to it:
 
 - **2**: Major release: 2.0 is defined as Unity 6-built feature parity with retail and its DLC along with bugfixes, optimizations, and the multiplayer changes below.
 - **2**: Minor release with new features or requirements, non-breaking changes backwards compatible within the major release line. A new minor release should indicate a significant fix or new feature.
-- **2**: Patchlevel: Bugfixes or minor corrections to the previous minor release.
+- **3**: Patchlevel: Bugfixes or minor corrections to the previous minor release.
 - **3B**: Simplified release indicator: (A)lpha/(B)eta/(R)elease and the number ('Beta 3' in this example)
 <!-- /release-version -->
 

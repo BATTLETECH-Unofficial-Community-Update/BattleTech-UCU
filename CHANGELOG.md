@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.3-3B (BT-UCU Beta 3.3)
+
+- **The drop ship on the mission briefing and loading screen no longer turns into a magenta rectangle** ([issue #28](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/28)). The change in 2.2.2-3B that releases the copies UCU makes of the original game's materials when a map unloads ran too early: while the next map was still loading, it found nothing using the drop ship's materials and freed them, although the loading screen still drew them. It now waits until the load has finished.
+
 ## 2.2.2-3B (BT-UCU Beta 3.2)
 
 - **Co-op with mods: both players' games now agree on the battle** ([issue #24](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/24)). In co-op, each player's game checks at the start of every round that both games hold the same units, and a joining player whose game disagreed was dropped with "REJOIN FAILED". With BattleTech Advanced the games disagreed because several mods roll their own random numbers and unit and equipment IDs separately on each PC: which faction the enemy is and which enemy units drop and where, the IDs of support teams, weapons and ammunition, and what a repair mod has already damaged. UCU's mod loader now makes those values the same on both players' PCs, for MissionControl, StrategicOperations, FieldRepairs, SoldiersPiratesAssassinsMercs, CustomAmmoCategories, CustomComponents and any mod that hooks unit spawning, each only when that mod is loaded. With SoldiersPiratesAssassinsMercs, whose own random draw decides whether and to which faction the enemy is swapped, both players now get the same replacement faction.

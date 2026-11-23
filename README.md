@@ -44,12 +44,12 @@ This project is a personal, non-commercial effort and is not affiliated with Par
 ## Current Release
 
 <!-- release-version -->
-**Version 2.2.3-3B** (more simply: UCU Beta 3.3). ([Release Notes](CHANGELOG.md)). Version definitions have to stick to the retail numbering system, but we assign our own meaning to it:
+**Version 2.3.0-4B** (more simply: UCU Beta 4). ([Release Notes](CHANGELOG.md)). Version definitions have to stick to the retail numbering system, but we assign our own meaning to it:
 
 - **2**: Major release: 2.0 is defined as Unity 6-built feature parity with retail and its DLC along with bugfixes, optimizations, and the multiplayer changes below.
-- **2**: Minor release with new features or requirements, non-breaking changes backwards compatible within the major release line. A new minor release should indicate a significant fix or new feature.
-- **3**: Patchlevel: Bugfixes or minor corrections to the previous minor release.
-- **3B**: Simplified release indicator: (A)lpha/(B)eta/(R)elease and the number ('Beta 3' in this example)
+- **3**: Minor release with new features or requirements, non-breaking changes backwards compatible within the major release line. A new minor release should indicate a significant fix or new feature.
+- **0**: Patchlevel: Bugfixes or minor corrections to the previous minor release.
+- **4B**: Simplified release indicator: (A)lpha/(B)eta/(R)elease and the number ('Beta 4' in this example)
 <!-- /release-version -->
 
 The initial 2.0.0A line represented the development cycle from April 2026 to November 2026. Beta 1 was released publicly on November 13, 2026.
@@ -71,12 +71,11 @@ MacOS is harder for two reasons:
 
 ## What's different from the 2018 retail game (and what isn't)
 
-- **Campaign/Career multiplayer.** Retail multiplayer is skirmish-only and relied on multiplayer servers long since sunset (without mods). In 2.0, career and campaign mode support the host inviting up to three other players and assigning permissions for each guest (mech bay, store, hiring, barracks, etc). Everyone sees the Argo, and each player controls the 'Mechs assigned to them. On a mission with fewer 'Mechs than players, anyone not assigned to a 'mech is an observer.
+- **Campaign/Career multiplayer.** Retail multiplayer is skirmish-only and relied on multiplayer servers long since sunset (without mods). In 2.0, career and campaign mode support the host inviting up to three other players and assigning permissions for each guest (mech bay, store, hiring, barracks, etc). Everyone sees the Argo, and each player controls the 'Mechs assigned to them. On a mission with fewer 'Mechs than players, anyone not assigned to a 'mech is an observer. On Steam and GOG installs the host can invite friends from the game (GOG co-op is new; see Known Issues), and the host's *Speed up combat* setting and the fast-forward key now work for everyone in a co-op contract.
 - **Faster loading.** A career save loads in about 17 seconds, down from 29 to 36 in our tests. A heavily modded save loads about a fifth faster.
 - **Retail bugs fixed.** Including multiplayer deadlocks, mortar strikes that lost their targets or fired twice on other players' screens, and more.
-- **Direct3D 12 is available.** This is a course for future development: D3D12 offers no performance or visual benefit for players (yet). Pick it in the launcher's *Settings* tab, or start the game with `-force-d3d12`. 
-- **Mods still work.** ModTek and Harmony mods run with no rebuild. A BattleTech Advanced career has been played through a contract, salvage, and a save and reload, and BattleTech Extended starts a battle, but additional testing is required.
-- **Content is unchanged.** If we didn't have to change something to make it work in Unity 6 or with multiplayer, we didn't, other than bugfixes and optimizations.
+- **Direct3D 12 with multicore rendering is an option.** DirectX 11 is the default until this has had more testing. In the launcher's *Settings* tab, *DirectX 12 with multi-core rendering* starts the game on Direct3D 12 and spreads the rendering work across several CPU cores; starting the game with `-force-d3d12` by hand gives Direct3D 12 on one rendering thread. In one measurement, multi-core rendering was faster than DirectX 11 and plain Direct3D 12 was about level with it. The [CHANGELOG](CHANGELOG.md) has the figures.
+- **Mods still work.** ModTek and Harmony mods run with no rebuild. BTA and BEX:T are supported (RogueTech pending)
 - **Paradox Online Services.** Paradox accounts work as in retail. Some analysis telemetry (app launch, hardware info) is sent to Paradox in retail but some of it was being rejected. We kept what was being accepted.
 
 See the [CHANGELOG](CHANGELOG.md) for the full list.
@@ -159,9 +158,13 @@ There is an avalanche of AI slop projects. Built into the DNA of our project's m
 
 ![AI Slop-O-Meter: lines of code UCU adds and removes, as a share of retail's code, with new features counted apart from patches to retail's code.](docs/code-delta.svg)
 
+![Bugs We Shipped: regressions and defects found late, by the release each arrived in, with retail's and mods' own bugs counted apart.](docs/bugs-shipped.svg)
+
+The Slop-O-Meter counts how much we changed. Bugs We Shipped counts what those changes broke. Every issue players report is traced to its cause and to the release it arrived in. A regression is a release breaking something that worked before. A bug found late was there from the start, in a combination we hadn't tested. Bugs the original game or a mod also has are shown apart.
+
 Retail's own code is over a million lines.  We didn't want to fix what wasn't broke. 'Patches' counts changes we've made to retail code to bring it forward into Unity 6, fix a bug, or improve performance. New features are limited to multiplayer career/campaign mode.
 
-I am a software developer with more than two decades of experience, but the folks at Harebrained and Paradox have more understanding of how these things work in their pinky fingers than I do. I'm a generalist but not a Unity developer, and I had to develop a rudimentary enough understanding of the Unity engine to know how to direct the AI and to evaluate whether it could achieve parity with a very mature, battle-tested retail release. Progress was very slow at first, but once we were able to get the UI off the ground, the rest followed.
+I am a developer with more than two decades of experience, but the folks at Harebrained and Paradox have more understanding of how these things work in their pinky fingers than I do. I'm a generalist but not a Unity developer, and I had to develop a rudimentary enough understanding of the Unity engine to know how to direct the AI and to evaluate whether it could achieve parity with a very mature, battle-tested retail release. Progress was very slow at first, but once we were able to get the UI off the ground, the rest followed.
 
 AI made this project possible. AI can also ruin it. That's why we maintain the slop-o-meter and why the majority of our effort goes into bugfixes, fidelity with the original game, and the narrow scope of 'new stuff' that we've accepted. Battletech has a superb modding community and it's the folks over at [BTA](https://www.bta3062.com/) and [RogueTech](https://roguetech.fandom.com/) and elsewhere who keep interest in this title alive. 
 
@@ -182,6 +185,8 @@ Places where UCU means to match retail but doesn't quite yet. Deliberate changes
 - **Martian maps** look less red and less saturated than retail's, and their rocks show more contrast. This was measured at different times of day and isn't confirmed yet.
 - **Most maps** haven't been compared with retail side by side under the same weather, and decals have been measured only on Central Mountain and Still Valley.
 - **Portraits** read slightly darker than retail, mostly on the shaded side of the face, and one preset's hair tips look cyan.
+- **Co-op on GOG** is new and has not been tried between two GOG accounts. A GOG host gets a friends-only GOG Galaxy lobby with INVITE FRIENDS, and friends join with JOIN from their GOG Galaxy friends list; LAN and Direct Address work as before. If you try it, please tell us what happened and attach both players' `Player.log`. For the log to help, open `BattleTech_Data/StreamingAssets/data/debug/settings.json` in your install and add `{ "k": "Network.Core", "v": "Log" }` to the `loggerLevels` list.
+- **Co-op weapon modes with three or more players:** a third player's weapon-mode click (CustomAmmoCategories) made while another player's game is loading is dropped, and the next check resyncs that player.
 - **Memory in long sessions** ([issue #22](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/22)): Memory use grows during a long session, about 1.5 GB above the original game after three missions and then about 200 MB per mission (around 9 GB after twelve). The original game also grows as you play. Restarting the game returns the memory. We are still working on it.
 
 ## Known Issues (Modders)
@@ -216,7 +221,7 @@ Our priorities:
 
 - **Your feedback.** This has been our pet project for the last seven months; now it's up to you to put the 'UC' in this update.
 - **Career and campaign co-op.** Since this is the flagship feature, we'd like to reduce any further barriers to people playing Battletech together!
-- **Direct3D 12.** Still very much a 'maybe' but we'll be exploring the possibilities and ramifications.
+- **Scriptable Render Pipeline.** Now that we have D3D12 and multi-core rendering, the next step is replacing the rendering pipeline with the newer Scriptable Rendering Pipeline.
 - **CoreCLR** (long-term) replacing the Mono runtime with CoreCLR in Unity 7 is a big investment but one with significant dividends. 
 
 ## Rights and Licensing
@@ -224,6 +229,14 @@ Our priorities:
 The source code for the installer and unlock server is licensed under the MIT License; see [installer/LICENSE](installer/LICENSE). This license does not cover BATTLETECH artwork, trademarks, game content, or the UCU game update.
 
 BATTLETECH and its associated content belong to their respective rights holders. UCU is a non-commercial community project operated under Paradox Interactive’s User Generated Content policy and requires a retail copy of BATTLETECH. See Paradox’s [User Agreement](https://legal.paradoxplaza.com/eula?locale=en) for applicable terms.
+
+## The BTUCU Team
+
+BTUCU is entirely volunteer-driven.
+
+* [InternetDadCo](https://github.com/InternetDadCo), project lead and founder
+* [Wyaeld](https://github.com/wyaeld), project developer
+* [gkirkpatrick](https://github.com/gkirkpatrick), project developer
 
 ## Credits
 

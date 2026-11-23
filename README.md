@@ -98,9 +98,11 @@ Updates to BT-UCU will update the installed folder in place. To uninstall, simpl
 
 From 2.1.0-2B, UCU can run mods through ModTek. The big mod packs have their own installers, which need retail BATTLETECH 1.9.1 and won't install onto UCU, so you install a pack on retail as usual and then link it across from UCU's launcher.
 
-![Mod packs: BTAU and BEX:T are supported with a check mark; RogueTech is pending.](docs/mod-packs.svg)
+![Mod packs: BTAU, BEX:T and Hyades Rim are supported with a check mark; RogueTech is pending.](docs/mod-packs.svg)
 
 UCU supports BattleTech Advanced (BTAU) and BattleTech Extended: Tactics (BEX:T) and both have had a surface-level of testing in that they load into the Argo and combat without errors. RogueTech support is pending: it loads part of the way on UCU, but its own launcher is required to run it (see the table). At this time, if you encounter an issue with any of the modpacks, report it here rather than to the modpack maintainers, unless you can reproduce the same issue without UCU.
+
+UCU also supports Hyades Rim. It needs no changes on UCU's side: it starts a career in the Hyades Rim and loads into combat without errors. Hyades Rim installs into your retail BATTLETECH folder, so in the launcher's *Mods* tab choose *Another ModTek v4 pack* and pick that folder.
 
 Here is where each pack stands today (to the best of our knowledge -- please report an issue if you find otherwise!)
 
@@ -108,6 +110,7 @@ Here is where each pack stands today (to the best of our knowledge -- please rep
 |---|---|---|
 | [BattleTech Advanced (BTA, also called BTAU)](https://www.bta3062.com/index.php?title=Main_Page) 20.3 | **Good** | On Windows and Proton under Linux, it loads, and users have played a career through a contract, salvage and a save and reload.  |
 | [BattleTech Extended (BEX:T)](https://battletech-extended-3025.fandom.com/wiki/Getting_Started) | **Good** | It loads and starts a battle, as of 2.2.0-3B.
+| [Hyades Rim](https://www.nexusmods.com/battletech/mods/473) 9.8.4 | **Good** | It loads, starts a new career in the Hyades Rim with the pack's own backgrounds, and starts a battle. |
 | [RogueTech](https://roguetech.fandom.com/wiki/Roguetech_Wiki) | **Pending** | One of its mods, CustomUnitSpawn, failed to start and, as of 2.2.0-3B, now does. However, RogueTech's core then refuses to run, because RogueTech must be started through its own launcher, and that launcher needs the retail `BattleTech.exe`. The RogueTech team is reviewing options. |
 
 Any ModTek pack should work the same way. If you try one, please tell us how it went through the Issues link, whether it worked or not.

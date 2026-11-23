@@ -28,6 +28,8 @@ Doorstop is LGPL 2.1: ship its `LICENSE` with it. The copy here is `DOORSTOP-LIC
 the bootstrap returns at once and writes a one-line `BattleTechPortBootstrap.log`, so vanilla installs run with it on.
 `tools/bta-link` copies a BTA install's mods and saves.
 
+When ModTek is present, the bootstrap also patches both asset-bundle path methods after ModTek's prefixes. For the exact `shaders` bundle, it redirects only a result that still names retail's bundle and only when `BattleTech_Data\StreamingAssets\ucu\bundles\shaders` exists; a mod-provided path is left alone. The `AssetBundleNameToFileURL` result keeps its `file://` form. Without ModTek, the bootstrap returns before registering this adapter, so the vanilla path is unchanged.
+
 ## Why not ModTek's doorstop
 
 ModTek 4.4.10's `winhttp.dll` crashes every D3D12 start. Unity delay-loads `d3d12.dll` by ordinal, and that doorstop's `GetProcAddress` hook

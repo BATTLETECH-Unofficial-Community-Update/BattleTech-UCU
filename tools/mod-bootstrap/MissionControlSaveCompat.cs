@@ -108,6 +108,7 @@ namespace BattleTechPort
 
         static void InitializeContractPostfix(object message)
         {
+            if (!CombatSavesRuntimeGate.SaveDataEnabled()) return;
             try
             {
                 object combat = message == null || !messageCombat.DeclaringType.IsInstanceOfType(message) ? null : messageCombat.GetValue(message);
@@ -140,9 +141,22 @@ namespace BattleTechPort
                     while (read < bytes.Length) { int n = s.Read(bytes, read, bytes.Length - read); if (n <= 0) break; read += n; }
                 }
                 Type entry = Assembly.Load(bytes).GetType("BattleTechPort.MissionControlEncounter.Entry", true);
-                entry.GetMethod("Apply", BindingFlags.Public | BindingFlags.Static).Invoke(null, new object[] { log, missionControl });
+                // Patch 161: the record DLL can't link the gate (it references the game), so it gets the gate's check here.
+                entry.GetMethod("Apply", BindingFlags.Public | BindingFlags.Static).Invoke(null, new object[] { log, missionControl, (Func<bool>)CombatSavesRuntimeGate.SaveDataEnabled });
+                setBoxLoad = entry.GetMethod("SetBoxLoad", BindingFlags.Public | BindingFlags.Static);
             }
             catch (Exception ex) { log("missioncontrol-encounter|FAILED|" + (ex is TargetInvocationException t && t.InnerException != null ? t.InnerException : ex)); }
+        }
+
+        static MethodInfo setBoxLoad;
+
+        // Patch 161, marker absent: the record DLL's SerialBox load patch comes off when a co-op combat ends and goes back on
+        // when the next one begins (ModBootstrap's disarm and arm actions). Nothing to do before the DLL is loaded.
+        public static void SetBoxLoad(bool on)
+        {
+            if (setBoxLoad == null) return;
+            try { setBoxLoad.Invoke(null, new object[] { on }); }
+            catch (Exception ex) { log("missioncontrol-encounter|box-load|FAILED|" + (ex is TargetInvocationException t && t.InnerException != null ? t.InnerException : ex)); }
         }
 
         static bool Orphan(object combat, object e, out string why)
@@ -182,6 +196,7 @@ namespace BattleTechPort
         static void Prefix(object __instance, out object[] __state)
         {
             __state = null;
+            if (!CombatSavesRuntimeGate.SaveDataEnabled()) return;
             try
             {
                 object combat = combatProp.GetValue(__instance, null);

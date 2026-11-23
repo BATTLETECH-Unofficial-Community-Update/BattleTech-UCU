@@ -17,7 +17,28 @@ trigger results while a battle is set up, and switches itself off on a load. The
 onto objects already in the map scene, so a load lost everything MissionControl built. UCU snapshots the scene before
 MissionControl runs, records what was added or changed at each save (appended after the game's own block, which the
 game never reads past), and rebuilds it on load before the save is applied. MissionControl's trigger results are saved
-as JSON of their fields and loaded back as their own types.
+as JSON of their fields and loaded back as their own types. For a contract type MissionControl adds (DuoDuel and
+DefenceInDepth, for example), the rebuilt layer made MissionControl treat the contract as a stock one on load and skip
+its building data, so the load failed; after such a load UCU puts back what MissionControl sets on a fresh start. Stock
+contract types take the old path.
+
+When MissionControl adds an extra lance, the load replays it, and then MissionControl's own `InitializeContract` prefix
+built it a second time (`AddDestroyWholeUnitChunk`, `AddObjectiveToAutocompleteTrigger` and
+`AddExtraLanceSpawnPoints`): a second copy with the same GUIDs, and no message memory for either, so the log filled with
+"Duplicate guid detected" and "No MessageMemory for OwnerID". On a load where the replay made objects, UCU now skips those
+three builders for that one `InitializeContract`. Fresh starts and loads with nothing replayed are unchanged. This only
+showed when MissionControl had rolled an extra lance.
+
+The save record's load patch (on `SerialBox<T>.LoadSerialBox`) first ran the game's shared load body for game cargo, and
+that body nulled every cargo type but the first it was compiled for, so a lance spawner's AI orders loaded as null, the
+lance never spawned, and in co-op the two players' unit counts differed. The patch now loads every cargo itself and checks
+it against the box's own type. This applied in 2.2.2-3B and 2.2.3-3B, with in-mission saves on.
+
+**Encounter types in a save.** Five of MissionControl's encounter types (`SwapPlacementGameLogic`, `SwapTeamFactionGameLogic`,
+`DisablePilotDeathGameLogic`, `DialogueActivator`, `SetChunkStateAtRandomActivator`) subclass `EncounterObjectGameLogic`,
+which is abstract and a saved class. The game gave that class only a skeleton contract, so the save dropped
+`EncounterLayerData.AllEncounterObjectGameLogics` and the load found no encounter objects. UCU's game code now generates
+the abstract class's contract once, and its mod subclasses save with it (with in-mission saves on, or in a co-op combat).
 
 **Co-op.** MissionControl rolls its encounter rule, extra lances and spawn placement from each player's own random
 stream and `Guid.NewGuid`, so co-op players ran different battles. In co-op only, UCU seeds `UnityEngine.Random` from

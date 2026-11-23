@@ -11,8 +11,9 @@ injuries) when the game applies its PoorlyMaintained effect. Every draw comes fr
 desyncs in round 1.
 
 **What UCU does.** In a co-op battle only, around each `PoorlyMaintainedEffect.ApplyEffectsTo*` call and
-`CombatGameState.FirstTimeInit`, `Mod.Random` is swapped for a `System.Random` seeded from the contract GUID, the method
-and the target unit's GUID, then the player's own instance is put back. Both players get the same seed regardless of
+`CombatGameState.FirstTimeInit`, every read of `Mod.Random` in the mod's own methods is redirected to a `System.Random`
+seeded from the contract GUID, the method and the target unit's GUID. `UnityEngine.Random` inside a `RepairState`
+constructor in one of those scopes is seeded from the scope's key too. Both players get the same seed regardless of
 call order. A draw made outside those calls during a co-op battle is logged, so a new hook that needs seeding shows up.
 Single-player is untouched.
 

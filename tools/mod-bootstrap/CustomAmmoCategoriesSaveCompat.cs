@@ -81,7 +81,7 @@ namespace BattleTechPort
 
         static void InitPrefix(object __instance)
         {
-            if (__instance == null) return;
+            if (__instance == null || !CombatSavesRuntimeGate.SaveDataEnabled()) return;
             try
             {
                 object combat = combatOf.GetValue(__instance, null);

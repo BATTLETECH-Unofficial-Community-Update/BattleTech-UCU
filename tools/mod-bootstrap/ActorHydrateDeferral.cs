@@ -55,7 +55,7 @@ namespace BattleTechPort
 
         static void BeforeCombatLoad()
         {
-            if (applied) return;
+            if (applied || !CombatSavesRuntimeGate.SaveDataEnabled()) return; // patch 161: marker, or a co-op combat (its snapshot reload)
             applied = true;
             try { Apply(); }
             catch (Exception ex) { log("actor-hydrate|FAILED|" + ex); }
@@ -124,7 +124,7 @@ namespace BattleTechPort
         {
             try
             {
-                if (!argMap.TryGetValue(__originalMethod, out int[] map)) return true;
+                if (!argMap.TryGetValue(__originalMethod, out int[] map) || !CombatSavesRuntimeGate.SaveDataEnabled()) return true;
                 object a = null;
                 for (int i = 0; i < map.Length; i++) if (map[i] == 0) a = __args[i];
                 if (a == null) return true;

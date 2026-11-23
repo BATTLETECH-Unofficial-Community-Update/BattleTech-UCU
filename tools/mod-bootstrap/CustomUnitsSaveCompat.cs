@@ -92,7 +92,7 @@ namespace BattleTechPort
             customInfoHelper = assembly.GetType("CustomUnits.VehicleCustomInfoHelper", false);
             Type serializer = GameType("BattleTech.Serialization.Serializer");
             Type mech = GameType("BattleTech.Mech");
-            MethodInfo create = serializer?.GetMethod("CreateModSubclassInstance", BindingFlags.Static | BindingFlags.Public);
+            MethodInfo create = serializer?.GetMethod("CreateModSubclassInstance", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic); // private since patch 140 (8b863bb59)
             MethodInfo initFromSave = mech?.GetMethod("InitFromSave", BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly);
             mechDef = mech?.GetProperty("MechDef", all);
             if (trooperSquad != null)
@@ -162,7 +162,7 @@ namespace BattleTechPort
         {
             try
             {
-                if (__result != null && trooperSquad.IsInstanceOfType(__result))
+                if (__result != null && trooperSquad.IsInstanceOfType(__result) && CombatSavesRuntimeGate.SaveDataEnabled())
                     locationIndex.SetValue(__result, -1);
             }
             catch (Exception ex) { log("customunits-save|create|FAILED|" + ex); }
@@ -189,7 +189,7 @@ namespace BattleTechPort
             try
             {
                 object combat = message == null || !messageCombat.DeclaringType.IsInstanceOfType(message) ? null : messageCombat.GetValue(message);
-                if (combat == null || !(bool)isLoadingFromSave.GetValue(combat, null) || encounterLayerData.GetValue(combat, null) != null) return true;
+                if (combat == null || !(bool)isLoadingFromSave.GetValue(combat, null) || encounterLayerData.GetValue(combat, null) != null || !CombatSavesRuntimeGate.SaveDataEnabled()) return true;
                 log("customunits-save|convoy|skipped on load|CombatGameState_InitializeContract.Postfix: applied before the save, the save holds its result");
                 return false;
             }
@@ -219,7 +219,7 @@ namespace BattleTechPort
 
         static void InitFromSavePrefix(object __instance, object dataManager)
         {
-            if (__instance == null || dataManager == null || __instance.GetType().Assembly.GetName().Name != AssemblyName) return;
+            if (__instance == null || dataManager == null || __instance.GetType().Assembly.GetName().Name != AssemblyName || !CombatSavesRuntimeGate.SaveDataEnabled()) return;
             try
             {
                 object def = mechDef.GetValue(__instance, null);
@@ -233,7 +233,7 @@ namespace BattleTechPort
 
         static void InitFromSavePostfix(object __instance)
         {
-            if (__instance == null || __instance.GetType().Assembly.GetName().Name != AssemblyName) return;
+            if (__instance == null || __instance.GetType().Assembly.GetName().Name != AssemblyName || !CombatSavesRuntimeGate.SaveDataEnabled()) return;
             KeepSavedMeleeRef(__instance);
             if (!trooperSquad.IsInstanceOfType(__instance)) return;
             try

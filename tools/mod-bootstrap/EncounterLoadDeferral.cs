@@ -46,7 +46,7 @@ namespace BattleTechPort
 
         static void BeforeCombatLoad()
         {
-            if (applied) return;
+            if (applied || !CombatSavesRuntimeGate.SaveDataEnabled()) return; // patch 161: marker, or a co-op combat (its snapshot reload)
             applied = true;
             try { Apply(); }
             catch (Exception ex) { log("encounter-load|FAILED|" + ex); }
@@ -109,7 +109,7 @@ namespace BattleTechPort
         {
             try
             {
-                if (!argMap.TryGetValue(__originalMethod, out int[] map)) return true;
+                if (!argMap.TryGetValue(__originalMethod, out int[] map) || !CombatSavesRuntimeGate.SaveDataEnabled()) return true;
                 object combat = null;
                 for (int i = 0; i < map.Length; i++) if (map[i] == 1) combat = __args[i];
                 if (combat == null) return true; // no combat argument: can't tell a load, so never held

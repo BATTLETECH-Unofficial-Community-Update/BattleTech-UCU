@@ -68,6 +68,7 @@ namespace BattleTechPort
 
         static void Postfix(object __instance, ref bool __result)
         {
+            if (!CombatSavesRuntimeGate.SaveDataEnabled()) return;
             try
             {
                 int i = (int)initiative.GetValue(__instance, null);

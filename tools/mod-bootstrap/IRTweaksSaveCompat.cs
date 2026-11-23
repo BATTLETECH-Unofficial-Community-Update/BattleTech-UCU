@@ -89,20 +89,28 @@ namespace BattleTechPort
             armed = true;
             try
             {
-                if (!CombatSavesRuntimeGate.IsEnabled())
+                // Issue 24 fault B (patch 161): with the marker absent the adapter is registered at a co-op combat, for its
+                // snapshots. Their load needs the scale skip below; IRTweaks' own DisableCombatSaves stays as it is.
+                bool marker = CombatSavesRuntimeGate.IsEnabled();
+                if (!marker && !CombatSavesRuntimeGate.SaveDataEnabled())
                 {
                     log("irtweaks-save|combat saves off (UCU toggle absent)");
                     return;
                 }
                 object config = irtweaks.GetType("IRTweaks.Mod", false)?.GetField("Config", BindingFlags.Static | BindingFlags.Public)?.GetValue(null);
                 object fixes = config?.GetType().GetField("Fixes")?.GetValue(config);
-                FieldInfo disableCombatSaves = fixes?.GetType().GetField("DisableCombatSaves");
-                if (disableCombatSaves == null || disableCombatSaves.FieldType != typeof(bool))
-                    log("irtweaks-save|skipped|DisableCombatSaves shape changed; combat saves remain off");
+                if (!marker)
+                    log("irtweaks-save|combat saves left as IRTweaks has them (UCU toggle absent; co-op snapshot loads only)");
                 else
                 {
-                    disableCombatSaves.SetValue(fixes, false);
-                    log("irtweaks-save|combat saves on (UCU toggle)");
+                    FieldInfo disableCombatSaves = fixes?.GetType().GetField("DisableCombatSaves");
+                    if (disableCombatSaves == null || disableCombatSaves.FieldType != typeof(bool))
+                        log("irtweaks-save|skipped|DisableCombatSaves shape changed; combat saves remain off");
+                    else
+                    {
+                        disableCombatSaves.SetValue(fixes, false);
+                        log("irtweaks-save|combat saves on (UCU toggle)");
+                    }
                 }
                 if (scale == null || combatOf == null || wasFromSave == null)
                 {
@@ -134,7 +142,7 @@ namespace BattleTechPort
             try
             {
                 object combat = __0 == null ? null : combatOf.GetValue(__0, null);
-                if (combat == null || !(bool)wasFromSave.GetValue(combat, null)) return true;
+                if (combat == null || !(bool)wasFromSave.GetValue(combat, null) || !CombatSavesRuntimeGate.SaveDataEnabled()) return true;
                 log("irtweaks-save|scale|skipped on load|ScaleObjectiveBuildingStructure: the save holds the scaled structure");
                 return false;
             }

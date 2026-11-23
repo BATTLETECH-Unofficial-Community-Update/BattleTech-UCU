@@ -140,6 +140,7 @@ namespace BattleTechPort
 
         static void RegistryPostfix(object __instance)
         {
+            if (!CombatSavesRuntimeGate.SaveDataEnabled()) return;
             try
             {
                 var keys = regKeys.GetValue(__instance) as List<string>;
@@ -171,6 +172,7 @@ namespace BattleTechPort
         static void Prefix(object __instance, out List<object> __state)
         {
             __state = null;
+            if (!CombatSavesRuntimeGate.SaveDataEnabled()) return;
             try
             {
                 foreach (object chunk in (Array)getComponentsInChildren.Invoke(__instance, new object[] { chunkType, false }))

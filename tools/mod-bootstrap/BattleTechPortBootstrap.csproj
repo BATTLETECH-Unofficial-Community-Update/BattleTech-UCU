@@ -36,6 +36,7 @@
   </Target>
   <ItemGroup>
     <Compile Include="..\transplant\port\HBS\Assembly-CSharp\BattleTech.Serialization.Utility\CombatSavesRuntimeGate.cs" Link="CombatSavesRuntimeGate.cs" />
+    <Compile Include="..\transplant\port\HBS\Assembly-CSharp\BattleTech.Network.Server\CoopCompareExclusions.cs" Link="CoopCompareExclusions.cs" />
     <Reference Include="mscorlib"><HintPath>$(ManagedDir)\mscorlib.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="0Harmony"><HintPath>$(ModTekLib)\0Harmony.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Mono.Cecil"><HintPath>$(ModTekLib)\Mono.Cecil.dll</HintPath><Private>false</Private></Reference>

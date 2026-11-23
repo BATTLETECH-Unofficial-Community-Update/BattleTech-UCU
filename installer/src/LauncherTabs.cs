@@ -250,6 +250,7 @@ namespace ReleaseGate
                 Show(_homeStatus, "BattleTech UCU is already running.", Bad);
                 return;
             }
+            string loader = _settings.GraphicsApi == LauncherSettings.D3D12 ? Installer.CheckD3D12Loader(dest) : null;
             try { Launcher.StartGame(dest, _settings); }
             catch (Exception e) when (e is System.ComponentModel.Win32Exception || e is IOException || e is InvalidOperationException)
             {
@@ -258,7 +259,7 @@ namespace ReleaseGate
             }
             Remember(dest);
             if (_settings.CloseOnPlay) Close();
-            else Show(_homeStatus, "Game started.", Good);
+            else Show(_homeStatus, "Game started." + (loader == null ? "" : " " + loader), loader == null || loader.Contains("replaced") ? Good : Bad);
         }
 
         // ---- Mods ----
@@ -470,7 +471,7 @@ namespace ReleaseGate
             TableLayoutPanel t = Page(_settingsTab);
             Span(t, Heading("Starting the game"));
             Span(t, new Label { Text = "Graphics API", AutoSize = true, Margin = new Padding(3, 0, 3, 3) });
-            _api.Items.AddRange(new object[] { "Game default (DirectX 11)", "DirectX 11", "DirectX 12 (no benefit yet)" });
+            _api.Items.AddRange(new object[] { "Game default (DirectX 11)", "DirectX 11", "DirectX 12 with multi-core rendering" });
             Span(t, _api);
             Span(t, new Label { Text = "Extra launch options, passed to BattleTech.exe (for example -screen-fullscreen 0)", AutoSize = true, MaximumSize = new Size(590, 0), Margin = new Padding(3, 8, 3, 3) });
             Span(t, _extraArgs);

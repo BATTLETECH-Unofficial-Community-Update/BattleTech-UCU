@@ -191,7 +191,7 @@ namespace ReleaseGate
 
         // Package tab
         readonly TextBox _player = Box("PlayerPath"), _version = Box("Version"), _retail = Box("RetailPath"), _gog = Box("GogPath"), _key = Box("KeyFile"),
-            _extra = Box("ExtraFingerprints"), _package = Box("PackagePath"), _testDest = Box("TestInstallPath");
+            _extra = Box("ExtraFingerprints"), _package = Box("PackagePath"), _testDest = Box("TestInstallPath"), _previous = Box("PreviousPackage");
         readonly Label _playerNote = Note(), _retailNote = Note(), _keyNote = Note(), _packageNote = Note(), _testNote = Note();
         readonly Button _addAppId = Btn("Add steam_appid.txt"), _pack = Btn("Pack"), _fingerprint = Btn("Add install..."),
             _testInstall = Btn("Test install"), _openSetup = Btn("Open installer window"), _startGame = Btn("Start test install");
@@ -376,6 +376,7 @@ namespace ReleaseGate
             Row(t, "BATTLETECH install", _retail, Browse(_retail, true, "Choose the retail BATTLETECH folder"));
             Wide(t, _retailNote);
             Row(t, "GOG install (optional)", _gog, Browse(_gog, true, "Choose a GOG BATTLETECH folder: the package then also installs from GOG"));
+            Row(t, "Previous package (optional)", _previous, Browse(_previous, true, "Choose the last package folder: files it already packed are reused, not scanned and sealed again"));
             Row(t, "Content key file", _key, Browse(_key, false, "Choose the content key file (created on first pack)"));
             Wide(t, _keyNote);
             Row(t, "Extra fingerprints", _extra, _fingerprint);
@@ -454,7 +455,7 @@ namespace ReleaseGate
             Row(t, "Upload token file", _token, Browse(_token, false, "Choose the file holding the GitHub token that uploads releases"));
             Row(t, "Tag", _tag, null);
             Row(t, "Release title", _relName, null);
-            Row(t, "Changelog file", _changelog, Browse(_changelog, false, "Choose CHANGELOG.md: the selected release's section is appended to the notes"));
+            Row(t, "Changelog file", _changelog, Browse(_changelog, false, "Choose PUBLIC-CHANGELOG.md (the player-facing one): the selected release's section is appended to the notes"));
             Row(t, "Notes", _notes, null);
             Wide(t, Buttons(_draft, _pre));
             Wide(t, _ghNote);
@@ -484,6 +485,7 @@ namespace ReleaseGate
             _player.Text = _settings.Get("player", "");
             _retail.Text = _settings.Get("retail", Gate.FindSteam() ?? "");
             _gog.Text = _settings.Get("gog", Gate.FindGog() ?? "");
+            _previous.Text = _settings.Get("previous", "");
             _key.Text = _settings.Get("key", "");
             _extra.Text = _settings.Get("extra", "");
             _package.Text = _settings.Get("package", "");
@@ -497,7 +499,7 @@ namespace ReleaseGate
             // Write access is the org token (secrets\btucu-mgmt-token.txt); a saved path to any other token file is replaced by it.
             string org = FindOrgToken(), savedToken = _settings.Get("token", "");
             _token.Text = org != null && !Path.GetFileName(savedToken).Equals(OrgTokenName, StringComparison.OrdinalIgnoreCase) ? org : savedToken;
-            _changelog.Text = _settings.Get("changelog", FindChangelog() ?? "");
+            _changelog.Text = PublicChangelog(_settings.Get("changelog", FindChangelog() ?? ""));
             _assets.Text = _settings.Get("assets", "");
             _partGib.Text = _settings.Get("partGib", "1.95");
             _master.Text = _settings.Get("master", "");
@@ -511,7 +513,7 @@ namespace ReleaseGate
 
         void SaveSettings()
         {
-            _settings.Set("player", _player.Text); _settings.Set("retail", _retail.Text); _settings.Set("gog", _gog.Text); _settings.Set("key", _key.Text);
+            _settings.Set("player", _player.Text); _settings.Set("retail", _retail.Text); _settings.Set("gog", _gog.Text); _settings.Set("previous", _previous.Text); _settings.Set("key", _key.Text);
             _settings.Set("master", _master.Text); _settings.Set("unlockUrl", _unlockUrl.Text);
             _settings.Set("extra", _extra.Text); _settings.Set("package", Typed(_package)); _settings.Set("testDest", Typed(_testDest));
             _settings.Set("butler", _butler.Text); _settings.Set("butlerKey", _butlerKey.Text); _settings.Set("itchTarget", _itchTarget.Text);
@@ -566,7 +568,7 @@ namespace ReleaseGate
             string text = "You need two things: the BattleTech UCU launcher (download BattleTechUCUSetup.exe below) and BATTLETECH itself, installed through Steam or GOG. " +
                 "The launcher finds your copy, installs UCU to a new folder beside it and starts the game; your own BATTLETECH isn't changed. " +
                 "To update, run the launcher again: it keeps a copy of itself in your install folder as BattleTech UCU Launcher.exe. (The \"Source code\" archives aren't needed. Windows SmartScreen may warn because the launcher isn't signed yet.)";
-            string section = ChangelogSection(changelogPath, version);
+            string section = ChangelogSection(PublicChangelog(changelogPath), version);
             return section.Length == 0 ? text : text + "\r\n\r\n" + section;
         }
 
@@ -610,7 +612,8 @@ namespace ReleaseGate
             return null;
         }
 
-        /// <summary>CHANGELOG.md in the nearest folder above this tool or the working directory.</summary>
+        /// <summary>The player-facing changelog in the nearest folder above this tool or the working directory:
+        /// PUBLIC-CHANGELOG.md, else a CHANGELOG.md (a folder from before the split, or the public repository).</summary>
         static string FindChangelog()
         {
             foreach (string start in new[] { AppDomain.CurrentDomain.BaseDirectory, Environment.CurrentDirectory })
@@ -618,11 +621,29 @@ namespace ReleaseGate
                 try
                 {
                     for (var d = new DirectoryInfo(start); d != null; d = d.Parent)
-                        if (File.Exists(Path.Combine(d.FullName, "CHANGELOG.md"))) return Path.Combine(d.FullName, "CHANGELOG.md");
+                        foreach (string name in new[] { PublicChangelogName, "CHANGELOG.md" })
+                            if (File.Exists(Path.Combine(d.FullName, name))) return Path.Combine(d.FullName, name);
                 }
                 catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { }
             }
             return null;
+        }
+
+        const string PublicChangelogName = "PUBLIC-CHANGELOG.md";
+
+        /// <summary>Since 2026-11-22 the development repository's root CHANGELOG.md is the developers' own and the release
+        /// notes come from PUBLIC-CHANGELOG.md beside it, so a path to that CHANGELOG.md (a saved setting, a --changelog
+        /// argument) is moved to its sibling when there is one.</summary>
+        internal static string PublicChangelog(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return path;
+            try
+            {
+                if (!Path.GetFileName(path).Equals("CHANGELOG.md", StringComparison.OrdinalIgnoreCase)) return path;
+                string sibling = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path)), PublicChangelogName);
+                return File.Exists(sibling) ? sibling : path;
+            }
+            catch (Exception e) when (e is ArgumentException || e is NotSupportedException || e is IOException || e is UnauthorizedAccessException) { return path; }
         }
 
         // ---------- checks ----------
@@ -943,13 +964,20 @@ namespace ReleaseGate
                 return;
             var progress = new PackProgress();
             string masterFile = _master.Text.Trim(), unlockUrl = _unlockUrl.Text.Trim();
+            // An earlier package to reuse. A folder that has gone is skipped with a note, so deleting the old package never blocks a pack.
+            string previous = _previous.Text.Trim();
+            if (previous.Length > 0 && !File.Exists(Path.Combine(previous, Gate.VaultName)))
+            {
+                Log("Previous package not found at " + previous + ": packing everything.");
+                previous = "";
+            }
             RunJob("Packing " + _version.Text.Trim(), token =>
             {
                 try
                 {
                     byte[] key = Pack.LoadKey(keyFile, output, Log);
                     byte[] master = masterFile.Length == 0 ? null : Pack.LoadMaster(masterFile, output);
-                    return Pack.Run(player, retail, output, key, extra, progress, token, master, master == null ? null : unlockUrl, null, gog.Length == 0 ? null : gog).Summary;
+                    return Pack.Run(player, retail, output, key, extra, progress, token, master, master == null ? null : unlockUrl, null, gog.Length == 0 ? null : gog, previous.Length == 0 ? null : previous).Summary;
                 }
                 catch (Exception failed)
                 {
@@ -965,7 +993,7 @@ namespace ReleaseGate
             },
             () => progress.Total == 0 ? 0 : (double)Interlocked.Read(ref progress.Done) / progress.Total,
             () => progress.Total == 0 ? "Indexing files..." : string.Format("Packing... {0:F1} of {1:F1} GiB", Interlocked.Read(ref progress.Done) / 1073741824.0, progress.Total / 1073741824.0),
-            ok => { if (ok) UpdateDefaults(); });
+            ok => { if (ok) { _previous.Text = output; UpdateDefaults(); } });   // the next pack reuses this one
         }
 
         void TestInstall(string source, string dest)

@@ -82,7 +82,7 @@ namespace ReleaseGate
             list.Add(new Source { Path = LauncherSettings.FilePath, Entry = "launcher/launcher.ini" });
             if (Launcher.IsInstall(install))
             {
-                foreach (string f in new[] { "BattleTechPortBootstrap.log", "doorstop_config.ini", Launcher.LinkMarker, "build-label.txt" })
+                foreach (string f in new[] { "BattleTechPortBootstrap.log", "doorstop_config.ini", Installer.LauncherLogName, Launcher.LinkMarker, "build-label.txt" })
                     list.Add(new Source { Path = Path.Combine(install, f), Entry = "install/" + f });
                 string mods = Path.Combine(install, "Mods");
                 if (Directory.Exists(mods))

@@ -7,6 +7,10 @@
 //                                           the retail files whose GOG bytes differ (GOG's own copy where gog-accept.tsv lists it,
 //                                           else Steam's packed) plus GOG's Galaxy natives; writes ucu-manifest-gog.tsv
 //   ReleasePack --fingerprint <retail dir>     prints a retail install's fingerprint, for adding a slot
+//               [--previous <package folder>]   reuses that package's work: a file whose SHA-256 is unchanged keeps its pieces and its
+//                                           blob (hard-linked, or copied across volumes), so only new and changed files are scanned
+//                                           and sealed. The result is the same package a full pack gives. Needs the same content key
+//                                           and a package made by a packer with retail ranges; give --master-secret when it is v3.
 // The key file holds the content key, which every release reuses so unchanged files keep the same blob. It is created on
 // first use. Keep it out of the repository and out of packages; a lost key only means the next release is uploaded whole.
 using System;
@@ -16,12 +20,117 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace ReleaseGate
 {
+    /// <summary>
+    /// An earlier package, read so a new pack can reuse its work (Pack.Run, previous). Nothing in it is trusted without a check:
+    /// a file is reused only when its SHA-256 equals the old entry's, a blob only when its own SHA-256 equals the vault's record,
+    /// and range pieces only while the retail files they name are still long enough.
+    /// </summary>
+    sealed class PreviousPack
+    {
+        public string Dir;
+        public Dictionary<string, Entry> Steam;     // the vault's main manifest, by path
+        public Dictionary<string, Entry> Gog;       // the manifest a GOG install gets; null when the old package took no GOG install
+        public int Linked, Copied;
+        readonly ConcurrentDictionary<string, long> _lengths = new ConcurrentDictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern bool CreateHardLink(string newFile, string existingFile, IntPtr security);
+
+        static Dictionary<string, Entry> ByPath(List<Entry> list)
+        {
+            var d = new Dictionary<string, Entry>(StringComparer.OrdinalIgnoreCase);
+            foreach (Entry e in list) d[e.Path] = e;
+            return d;
+        }
+
+        public static PreviousPack Load(string dir, byte[] key, byte[] steamFingerprint, byte[] gogFingerprint, byte[] master)
+        {
+            dir = Path.GetFullPath(dir);
+            string vault = Path.Combine(dir, Gate.VaultName);
+            if (!File.Exists(vault)) throw new FileNotFoundException("The previous package has no " + Gate.VaultName + ": " + dir, vault);
+            var head = new byte[8];
+            using (var f = new FileStream(vault, FileMode.Open, FileAccess.Read, FileShare.Read))
+                if (f.Read(head, 0, head.Length) < head.Length) head = null;
+            if (!Gate.IsRangedVault(head))
+                throw new ArgumentException("The previous package was made before retail-range packing (or its vault isn't one), so its files were never scanned for retail ranges. Pack without --previous once; later packs can reuse that one.");
+            Func<VaultLock, byte[]> share = lk =>
+            {
+                if (master == null) throw new UnlockException("The previous package needs the unlock server's master secret to be read: give --master-secret (or fill the Master secret box).");
+                return Gate.Share(master, lk.ReleaseId);
+            };
+            var p = new PreviousPack { Dir = dir };
+            List<Entry> main;
+            byte[] k = Read(vault, steamFingerprint, share, null, out main);
+            if (k == null) throw new ArgumentException("The previous package doesn't accept this retail install.");
+            if (!k.SequenceEqual(key)) throw new ArgumentException("The previous package was packed under a different content key, so its blobs can't be reused. Pack without --previous.");
+            p.Steam = ByPath(main);
+            if (gogFingerprint != null)
+            {
+                List<Entry> merged;
+                byte[] k2 = Read(vault, gogFingerprint, share, Gate.Gog, out merged);
+                if (k2 != null && k2.SequenceEqual(key)) p.Gog = ByPath(merged);
+            }
+            return p;
+        }
+
+        static byte[] Read(string vault, byte[] fingerprint, Func<VaultLock, byte[]> share, string store, out List<Entry> entries)
+        {
+            try
+            {
+                using (var f = new FileStream(vault, FileMode.Open, FileAccess.Read, FileShare.Read))
+                    return Gate.ReadVault(f, fingerprint, share, store, out entries);
+            }
+            catch (UnlockException e) { throw new ArgumentException(e.Message); }
+        }
+
+        /// <summary>True when every retail range still lies inside a file of that name under root, and the pieces add up to size.</summary>
+        public bool Fits(List<RangePiece> pieces, string root, long size)
+        {
+            long total = 0;
+            foreach (RangePiece p in pieces)
+            {
+                total += p.Length;
+                if (!p.FromRetail) continue;
+                string path = Path.Combine(root, p.Path.Replace('/', '\\'));
+                long n;
+                if (!_lengths.TryGetValue(path, out n))
+                {
+                    n = File.Exists(path) ? new FileInfo(path).Length : -1;
+                    _lengths[path] = n;
+                }
+                if (n < 0 || p.Offset < 0 || p.Offset + p.Length > n) return false;
+            }
+            return total == size;
+        }
+
+        /// <summary>The old blob's SHA-256 for a whole-sealed GOG entry of this file, or null.</summary>
+        public string GogWhole(string path, string sha)
+        {
+            Entry e;
+            return Gog != null && Gog.TryGetValue(path, out e) && e.Sha256 == sha && e.RetailPath.Length == 0 && string.IsNullOrEmpty(e.Pieces) && e.Blob.Length > 0 ? e.BlobSha256 : null;
+        }
+
+        /// <summary>
+        /// Puts the old package's blob at dst when it is there and its SHA-256 is what the old vault recorded: a hard link, or a
+        /// copy where links aren't possible (another volume). Returns that SHA-256, or null when the blob has to be sealed anew.
+        /// </summary>
+        public string Reuse(string blob, string expectSha, string dst)
+        {
+            string old = Path.Combine(Dir, blob.Replace('/', '\\'));
+            if (!File.Exists(old) || !string.Equals(Gate.HashFile(old), expectSha, StringComparison.OrdinalIgnoreCase)) return null;
+            if (CreateHardLink(dst, old, IntPtr.Zero)) Interlocked.Increment(ref Linked);
+            else { File.Copy(old, dst); Interlocked.Increment(ref Copied); }
+            return expectSha;
+        }
+    }
+
     public sealed class PackProgress
     {
         public long Done;    // bytes of player files finished
@@ -65,7 +174,7 @@ namespace ReleaseGate
                     Console.WriteLine(Gate.Hex(Gate.Fingerprint(a[1])));
                     return 0;
                 }
-                string player = null, retail = null, output = null, keyFile = null, masterFile = null, unlockUrl = null, unity = null, gog = null;
+                string player = null, retail = null, output = null, keyFile = null, masterFile = null, unlockUrl = null, unity = null, gog = null, previous = null;
                 var extra = new List<byte[]>();
                 for (int i = 0; i + 1 < a.Length; i += 2)
                 {
@@ -78,13 +187,14 @@ namespace ReleaseGate
                     else if (a[i] == "--unlock-url") unlockUrl = a[i + 1];
                     else if (a[i] == "--unity") unity = a[i + 1];
                     else if (a[i] == "--gog") gog = a[i + 1];
+                    else if (a[i] == "--previous") previous = a[i + 1];
                     else throw new ArgumentException("Unknown option " + a[i]);
                 }
                 if (player == null || retail == null || output == null || keyFile == null) throw new ArgumentException("Need --player, --retail, --key and --out");
                 if (Directory.Exists(output)) throw new IOException("Output exists: " + output);
                 if ((masterFile == null) != (unlockUrl == null)) throw new ArgumentException("--master-secret and --unlock-url go together");
                 byte[] master = masterFile == null ? null : LoadMaster(masterFile, output);
-                PackResult r = Run(player, retail, output, LoadKey(keyFile, output, Console.WriteLine), extra, new PackProgress(), CancellationToken.None, master, unlockUrl, unity, gog);
+                PackResult r = Run(player, retail, output, LoadKey(keyFile, output, Console.WriteLine), extra, new PackProgress(), CancellationToken.None, master, unlockUrl, unity, gog, previous);
                 Console.WriteLine(r.Summary);
                 return 0;
             }
@@ -151,7 +261,7 @@ namespace ReleaseGate
         }
 
         public static PackResult Run(string player, string retail, string output, byte[] key, List<byte[]> extra, PackProgress progress, CancellationToken stop,
-            byte[] masterSecret = null, string unlockUrl = null, string unity = null, string gog = null)
+            byte[] masterSecret = null, string unlockUrl = null, string unity = null, string gog = null, string previousPackage = null)
         {
             if (gog != null)
             {
@@ -196,9 +306,19 @@ namespace ReleaseGate
                 if (!index.TryGetValue(k, out l)) index[k] = l = new List<string>();
                 l.Add(rel);
             }
-            // Byte ranges of the retail installs, for files that aren't retail-identical but embed retail runs.
-            RetailIndex steamRanges = RetailIndex.Build(retail);
-            RetailIndex gogRanges = gog == null ? null : RetailIndex.Build(gog);
+            // The earlier package whose work is reused, if one was given. A full pack of the same player is the reference result.
+            PreviousPack previous = null;
+            if (previousPackage != null)
+            {
+                if (!Directory.Exists(previousPackage)) throw new DirectoryNotFoundException("The previous package folder doesn't exist: " + previousPackage);
+                if (string.Equals(Path.GetFullPath(previousPackage).TrimEnd('\\'), Path.GetFullPath(output).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                    throw new ArgumentException("--previous can't be the output folder");
+                previous = PreviousPack.Load(previousPackage, key, fingerprint, gog == null ? null : Gate.Fingerprint(gog), masterSecret);
+            }
+            // Byte ranges of the retail installs, for files that aren't retail-identical but embed retail runs. Built on first use:
+            // a pack that reuses an earlier one's scans may never need them.
+            var steamRanges = new Lazy<RetailIndex>(() => RetailIndex.Build(retail));
+            var gogRanges = gog == null ? null : new Lazy<RetailIndex>(() => RetailIndex.Build(gog));
 
             var files = new List<string>();
             foreach (string f in Directory.EnumerateFiles(player, "*", SearchOption.AllDirectories))
@@ -214,20 +334,27 @@ namespace ReleaseGate
             long copied = 0, sealedBytes = 0, blobBytes = 0, largest = 0, steamRange = 0, gogRange = 0, residualBytes = 0;
             int ranged = 0;
             var gogRanged = new ConcurrentDictionary<string, List<RangePiece>>(StringComparer.OrdinalIgnoreCase);
-            // Files with the same content share one blob. A ranged file's blob holds only its residual bytes.
+            var gogReuse = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);   // GOG ranged file -> its old blob's SHA-256
+            int reusedFiles = 0, reusedBlobs = 0;
+            long reusedBytes = 0;
+            // Files with the same content share one blob. A ranged file's blob holds only its residual bytes. reuseSha is the
+            // SHA-256 the previous package's vault records for this blob: when that package still holds a blob of that hash, it
+            // is linked in and nothing is sealed.
             var blobs = new ConcurrentDictionary<string, Lazy<string>>();
-            Func<string, string, List<RangePiece>, string> sealOnce = (src, sha, residual) =>
+            Func<string, string, List<RangePiece>, string, string> sealOnce = (src, sha, residual, reuseSha) =>
             {
                 string blob = Gate.BlobFor(key, sha);
                 return blobs.GetOrAdd(sha, _ => new Lazy<string>(() =>
                 {
                     string dst = Path.Combine(output, blob);
-                    string s;
-                    if (residual == null)
+                    string s = reuseSha == null || previous == null ? null : previous.Reuse(blob, reuseSha, dst);
+                    if (s != null) Interlocked.Increment(ref reusedBlobs);
+                    else if (residual == null)
                         s = Seal(src, dst, key, blob, sha);
                     else
                         using (var input = new ResidualStream(src, residual)) s = Seal(input, dst, key, blob, sha);
                     long n = new FileInfo(dst).Length;
+                    if (reuseSha != null && s == reuseSha) Interlocked.Add(ref reusedBytes, n);
                     Interlocked.Add(ref blobBytes, n);
                     long seen;
                     while (n > (seen = Interlocked.Read(ref largest)) && Interlocked.CompareExchange(ref largest, n, seen) != seen) { }
@@ -249,9 +376,21 @@ namespace ReleaseGate
                     foreach (string c in candidates)
                         if (Gate.HashFile(Path.Combine(retail, c)) == sha) { e.RetailPath = c; break; }
                 List<RangePiece> pieces = null;
-                if (e.RetailPath.Length == 0 && size >= 64 * 1024)
+                // The old package already analysed this exact file (same path, size and SHA-256) against the same retail install:
+                // keep its pieces and its blob instead of scanning and sealing again.
+                string reuseSha = null;
+                Entry old = null;
+                bool again = e.RetailPath.Length == 0 && previous != null && previous.Steam.TryGetValue(rel, out old)
+                    && old.Sha256 == sha && old.Size == size && old.RetailPath.Length == 0 && old.Blob.Length > 0 && old.BlobSha256.Length > 0;
+                if (again && !string.IsNullOrEmpty(old.Pieces))
                 {
-                    RetailIndex.Scan scan = steamRanges.ScanFile(src, stop);
+                    List<RangePiece> kept = Gate.ParsePieces(old.Pieces);
+                    if (previous.Fits(kept, retail, size)) pieces = kept; else again = false;
+                }
+                if (again) { reuseSha = old.BlobSha256; Interlocked.Increment(ref reusedFiles); }
+                else if (e.RetailPath.Length == 0 && size >= 64 * 1024)
+                {
+                    RetailIndex.Scan scan = steamRanges.Value.ScanFile(src, stop);
                     if (scan.Matched >= 1 << 20) pieces = scan.Pieces;
                 }
                 if (e.RetailPath.Length > 0)
@@ -261,7 +400,7 @@ namespace ReleaseGate
                     string residualSha = RetailRanges.ResidualSha256(src, pieces);
                     e.Pieces = Gate.FormatPieces(pieces);
                     e.Blob = Gate.BlobFor(key, residualSha);
-                    e.BlobSha256 = sealOnce(src, residualSha, pieces);
+                    e.BlobSha256 = sealOnce(src, residualSha, pieces, reuseSha);
                     long fromSteam = RetailRanges.RetailBytes(pieces);
                     Interlocked.Add(ref steamRange, fromSteam);
                     Interlocked.Add(ref sealedBytes, size - fromSteam);
@@ -269,7 +408,14 @@ namespace ReleaseGate
                     Interlocked.Increment(ref ranged);
                     if (gogRanges != null)
                     {
-                        List<RangePiece> g = gogRanges.ScanFile(src, stop).Pieces;
+                        List<RangePiece> g = null;
+                        Entry og;
+                        if (reuseSha != null && previous.Gog != null && previous.Gog.TryGetValue(rel, out og) && og.Sha256 == sha && !string.IsNullOrEmpty(og.Pieces))
+                        {
+                            List<RangePiece> kept = Gate.ParsePieces(og.Pieces);
+                            if (previous.Fits(kept, gog, size)) { g = kept; gogReuse[rel] = og.BlobSha256; }
+                        }
+                        if (g == null) g = gogRanges.Value.ScanFile(src, stop).Pieces;
                         gogRanged[rel] = g;
                         Interlocked.Add(ref gogRange, RetailRanges.RetailBytes(g));
                     }
@@ -277,7 +423,7 @@ namespace ReleaseGate
                 else
                 {
                     e.Blob = Gate.BlobFor(key, sha);
-                    e.BlobSha256 = sealOnce(src, sha, null);
+                    e.BlobSha256 = sealOnce(src, sha, null, reuseSha);
                     Interlocked.Add(ref sealedBytes, size);
                 }
                 entries[i] = e;
@@ -296,7 +442,7 @@ namespace ReleaseGate
             if (gog != null)
             {
                 slots.Add(Gate.Fingerprint(gog));
-                List<Entry> section = GogSection(player, gog, key, entries, rows, sealOnce, stop, gogRanged, out gogRows, out gogSummary);
+                List<Entry> section = GogSection(player, gog, key, entries, rows, sealOnce, stop, gogRanged, previous, gogReuse, out gogRows, out gogSummary);
                 stores = new Dictionary<string, List<Entry>> { { Gate.Gog, section } };
             }
             Gate.WriteVault(Path.Combine(output, Gate.VaultName), key, slots, entries.ToList(), lk, lk == null ? null : Gate.Share(masterSecret, lk.ReleaseId), stores);
@@ -334,6 +480,8 @@ namespace ReleaseGate
                 result.FromRetail, copied / 1073741824.0, clock.Elapsed.TotalSeconds)
                 + string.Format("; ranged {0} files, {1:F2} GiB from Steam ranges, {2:F2} GiB from GOG ranges, residual {3:F2} GiB",
                     ranged, steamRange / 1073741824.0, gogRange / 1073741824.0, residualBytes / 1073741824.0)
+                + (previous == null ? "" : string.Format("; reused from {0}: {1} files kept their scan, {2} of {3} blobs ({4:F2} GiB; {5} hard-linked, {6} copied), {7} sealed anew",
+                    previous.Dir, reusedFiles, reusedBlobs, blobs.Count, reusedBytes / 1073741824.0, previous.Linked, previous.Copied, blobs.Count - reusedBlobs))
                 + (lk == null ? "; no unlock server (v2)" : "; unlock server release " + lk.Id)
                 + "; public manifest " + origins + (unity == null ? " (the player's Unity Editor wasn't found and no --unity was given: stock Unity files count as built or data)" : " (Unity files from " + unity + ")")
                 + ", SHA-256 " + result.ManifestSha256
@@ -370,8 +518,8 @@ namespace ReleaseGate
         /// when gog-accept.tsv lists both hashes, else installed from Steam's bytes, packed; the Galaxy natives are added.
         /// </summary>
         static List<Entry> GogSection(string player, string gog, byte[] key, Entry[] entries, ManifestRow[] rows,
-            Func<string, string, List<RangePiece>, string> sealOnce, CancellationToken stop, ConcurrentDictionary<string, List<RangePiece>> gogRanged,
-            out List<ManifestRow> gogRows, out string summary)
+            Func<string, string, List<RangePiece>, string, string> sealOnce, CancellationToken stop, ConcurrentDictionary<string, List<RangePiece>> gogRanged,
+            PreviousPack previous, ConcurrentDictionary<string, string> gogReuse, out List<ManifestRow> gogRows, out string summary)
         {
             HashSet<string> accept = GogAccept();
             var section = new ConcurrentBag<Entry>();
@@ -396,7 +544,7 @@ namespace ReleaseGate
                 }
                 else
                 {
-                    string blobSha = sealOnce(Path.Combine(player, e.Path), e.Sha256, null);
+                    string blobSha = sealOnce(Path.Combine(player, e.Path), e.Sha256, null, previous == null ? null : previous.GogWhole(e.Path, e.Sha256));
                     section.Add(new Entry { Path = e.Path, Size = e.Size, Blob = Gate.BlobFor(key, e.Sha256), BlobSha256 = blobSha, RetailPath = "", Sha256 = e.Sha256 });
                     newRows[e.Path] = new ManifestRow { Path = e.Path, Size = e.Size, Sha512 = r.Sha512, Origin = r.Exec ? PublicManifest.Built : PublicManifest.Data, Exec = r.Exec };
                     Interlocked.Increment(ref packed);
@@ -412,7 +560,9 @@ namespace ReleaseGate
                 if (text == e.Pieces) return;
                 string src = Path.Combine(player, kv.Key);
                 string residualSha = RetailRanges.ResidualSha256(src, kv.Value);
-                string blobSha = sealOnce(src, residualSha, kv.Value);
+                string reuse;
+                gogReuse.TryGetValue(kv.Key, out reuse);
+                string blobSha = sealOnce(src, residualSha, kv.Value, reuse);
                 section.Add(new Entry { Path = e.Path, Size = e.Size, Blob = Gate.BlobFor(key, residualSha), BlobSha256 = blobSha, RetailPath = "", Sha256 = e.Sha256, Pieces = text });
                 Interlocked.Increment(ref ranged);
             });

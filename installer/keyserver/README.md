@@ -13,7 +13,7 @@ A Cloudflare Worker that unlocks packages made with an unlock server. It unlocks
 Each way it answers with that release's share. Design and reasons: `../docs/keyserver-design.md`.
 
 What's here: `src/worker.js` (the Worker), `schema.sql` (its D1 database), `wrangler.toml` (its settings, no secrets),
-`admin.ps1` (codes, the off switch, the record).
+`admin.ps1` (codes, the off switch, the record), `dev-token.ps1` (fetches and checks developer tokens, below).
 
 ## Where to run it
 
@@ -127,6 +127,46 @@ table; existing tables are kept), then `npx wrangler deploy`.
 - **Players** enter the code in the installer, which remembers it for that Windows user. Dashes, spaces and case don't matter.
 - **Release ids:** the Release Manager's log shows a package's release id when it packs one.
 - **Changing the Worker:** after you change `src/worker.js`, run `npx wrangler deploy` again.
+
+## Developer tokens
+
+For the handful of UCU developers only (the maintainer, 2026-11-20: "our word in the token are sufficient. We won't be expanding
+this to anyone else"). A developer token lets a release player run with no store: no Steam or Galaxy, local saves, and
+the DLC the token names, so test runs don't need Steam app 637090 or the lease that guards it. Co-op still works over
+Direct Address and LAN. The token is the server's word on who and which DLC; the player checks its signature offline.
+
+**Setup (once):**
+
+1. `.\admin.ps1 dev-keygen` writes `<workspace>\ReleaseManager\keys\dev-signing-key.json` (private) and
+   `dev-public-key.xml` (the copy the player carries). Back the private key up with the master secret. Making a new
+   key ends every token signed with the old one.
+2. `Get-Content ..\keys\dev-signing-key.json | npx wrangler secret put DEV_SIGNING_KEY`
+3. `.\admin.ps1 init` (adds the `developers` table; existing tables are kept), then `npx wrangler deploy`.
+
+**Per developer:** `.\admin.ps1 new-code <name>` if they have no code, then `.\admin.ps1 dev-grant <name>` (all four
+DLC, 30-day tokens), or `-Dlc flashpoint,heavymetal -Days 7` to narrow it. The developer runs:
+
+```powershell
+.\dev-token.ps1 -Code <their code> -Url https://btucu-unlock.<subdomain>.workers.dev -Out <player folder>\ucu-dev-token.txt
+```
+
+and runs it again before the token expires. `-Check <file> -PublicKey <dev-public-key.xml>` checks a token the way the
+player does (`VALID`, `EXPIRED`, `BAD-SIGNATURE`, `WRONG-SCOPE`).
+
+| Task | Command |
+|---|---|
+| Let a code fetch tokens | `.\admin.ps1 dev-grant <name> [-Dlc all\|<pack,pack>] [-Days 1-90]` |
+| Stop it | `.\admin.ps1 dev-ungrant <name>`, or `revoke <name>` to stop the code everywhere |
+| Who has grants, last token | `.\admin.ps1 devs` |
+
+- **Token:** `UCUDEV1.<payload>.<signature>`, base64url. Payload `{v, scope: "no-store", name, dlc, iat, exp}`; signature
+  RSASSA-PKCS1-v1_5 SHA-256 (RSA 2048) over `UCUDEV1.<payload>`, so .NET Framework and Mono verify it with
+  `RSACryptoServiceProvider.VerifyData`.
+- **No revocation list:** an issued token works until it expires. Ungrant or revoke, then wait out at most the grant's days,
+  or replace the signing key to end every token at once.
+- **Limits:** the 30-a-day cap per code and the per-IP limit apply; the off switch (`close`) and retired releases don't,
+  since a token unlocks no release. Each fetch is in `admin.ps1 log` as release `dev-token`.
+- Never put a token in git (`ucu-dev-token.txt` is ignored) or in a package.
 
 ## What players see
 

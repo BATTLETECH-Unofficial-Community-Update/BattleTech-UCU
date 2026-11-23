@@ -14,8 +14,16 @@
 // The share is HMAC-SHA256(MASTER_SECRET, "btucu-share|" + release id); the packer computes the same with the same secret,
 // so no release needs uploading here. D1 holds hashed codes, hashed Steam IDs, retired releases, settings and a record of
 // unlocks. No IP address is stored: the per-IP limit is Cloudflare's rate-limiting binding, held in memory.
+//
+// POST /v1/dev-token {"code": "<access code>"} -> {"token": "UCUDEV1.<payload>.<signature>", "expires": <unix>}
+// Developer tokens (the maintainer, 2026-11-20: a handful of developers, "our word in the token are sufficient"): a code that
+// `admin.ps1 dev-grant` made a developer gets a token signed with DEV_SIGNING_KEY (RSA private JWK, RSASSA-PKCS1-v1_5
+// SHA-256). The player holds only the public key and checks the token offline; it turns on no-store mode (no Steam or
+// Galaxy, local saves, the token's DLC lent). The payload is the server's word: name, scope, DLC, issue and expiry.
+// No revocation list: a token lives until it expires, so revoke the code and wait out at most the grant's days.
 
 const PER_CODE_PER_DAY = 30;
+const DEV_PACKS = ["flashpoint", "shadowhawkdlc", "urbanwarfare", "heavymetal"];
 const CODE_LENGTH = 20;
 const STEAM_IDENTITY = "btucu-unlock";
 const STEAM_AUTH = "https://api.steampowered.com/ISteamUserAuth/AuthenticateUserTicket/v1/";
@@ -23,8 +31,9 @@ const STEAM_AUTH = "https://api.steampowered.com/ISteamUserAuth/AuthenticateUser
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname !== "/v1/unlock") return json(404, { error: "not-found" });
+    if (url.pathname !== "/v1/unlock" && url.pathname !== "/v1/dev-token") return json(404, { error: "not-found" });
     if (request.method !== "POST") return json(405, { error: "method" });
+    if (url.pathname === "/v1/dev-token") return devToken(request, env);
     if (!env.MASTER_SECRET || !/^[0-9a-fA-F]{64}$/.test(env.MASTER_SECRET.trim())) {
       return json(500, { error: "server", message: "The unlock server isn't set up yet." });
     }
@@ -169,6 +178,61 @@ async function gogUnlock(env, release, proof) {
   const share = await hmacHex(env.MASTER_SECRET.trim(), "btucu-share|" + release);
   await record(env, "gog", release, now, 1);
   return json(200, { share });
+}
+
+/** A developer token: a valid, unrevoked code with a developers row gets a signed token for its grant's days and DLC. */
+async function devToken(request, env) {
+  let jwk;
+  try {
+    jwk = JSON.parse(String(env.DEV_SIGNING_KEY || ""));
+  } catch {
+    jwk = null;
+  }
+  if (!jwk || jwk.kty !== "RSA" || !jwk.d) {
+    return json(503, { error: "dev-off", message: "Developer tokens aren't set up on this server." });
+  }
+  if (env.LIMITER) {
+    const { success } = await env.LIMITER.limit({ key: request.headers.get("CF-Connecting-IP") || "unknown" });
+    if (!success) return json(429, { error: "slow-down" });
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json(400, { error: "bad-request" });
+  }
+  const code = normalize(body && body.code);
+  if (code.length !== CODE_LENGTH) return json(400, { error: "bad-request" });
+
+  const now = Math.floor(Date.now() / 1000);
+  const codeHash = await sha256Hex(code);
+  const dev = await env.DB.prepare(
+    "SELECT c.name, c.revoked, d.dlc, d.days FROM codes c JOIN developers d ON d.hash = c.hash WHERE c.hash = ?"
+  ).bind(codeHash).first();
+  if (!dev || dev.revoked) {
+    await record(env, codeHash, "dev-token", now, 0);
+    return json(403, { error: "code" });
+  }
+  const used = await env.DB.prepare("SELECT COUNT(*) AS n FROM unlocks WHERE code_hash = ? AND ok = 1 AND at > ?")
+    .bind(codeHash, now - 86400)
+    .first();
+  if (used && used.n >= PER_CODE_PER_DAY) return json(429, { error: "slow-down" });
+
+  const dlc = String(dev.dlc || "").split(",").filter((p) => DEV_PACKS.includes(p));
+  const days = Math.min(Math.max(Number(dev.days) || 30, 1), 90);
+  const payload = { v: 1, scope: "no-store", name: dev.name, dlc, iat: now, exp: now + days * 86400 };
+  const body64 = b64url(new TextEncoder().encode(JSON.stringify(payload)));
+  const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
+  const signed = "UCUDEV1." + body64;
+  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(signed));
+  await record(env, codeHash, "dev-token", now, 1);
+  return json(200, { token: signed + "." + b64url(sig), expires: payload.exp });
+}
+
+function b64url(buffer) {
+  let s = "";
+  for (const b of new Uint8Array(buffer)) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 /** GOG_FINGERPRINTS: 64-hex fingerprints, comma- or space-separated. Anything else in it is ignored. */

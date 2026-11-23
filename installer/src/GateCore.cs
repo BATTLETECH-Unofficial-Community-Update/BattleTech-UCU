@@ -114,6 +114,12 @@ namespace ReleaseGate
             return Starts(head, Magic) || Starts(head, Magic3) || Starts(head, MagicR) || Starts(head, MagicR3);
         }
 
+        /// <summary>True for a vault with retail-range support (the ranged magic), which a package made by this packer carries.</summary>
+        public static bool IsRangedVault(byte[] head)
+        {
+            return Starts(head, MagicR) || Starts(head, MagicR3);
+        }
+
         static bool IsV3(byte[] magic)
         {
             return Starts(magic, Magic3) || Starts(magic, MagicR3);

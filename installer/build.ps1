@@ -36,7 +36,7 @@ if ($Deploy) {
     $ks = Join-Path $Deploy 'keyserver'
     New-Item -ItemType Directory -Force (Join-Path $ks 'src') | Out-Null
     Copy-Item "$here\keyserver\src\worker.js" (Join-Path $ks 'src') -Force
-    Copy-Item "$here\keyserver\schema.sql", "$here\keyserver\admin.ps1", "$here\keyserver\package.json", "$here\keyserver\package-lock.json", "$here\keyserver\README.md", "$here\keyserver\.gitignore" $ks -Force
+    Copy-Item "$here\keyserver\schema.sql", "$here\keyserver\admin.ps1", "$here\keyserver\dev-token.ps1", "$here\keyserver\package.json", "$here\keyserver\package-lock.json", "$here\keyserver\README.md", "$here\keyserver\.gitignore" $ks -Force
     if (Test-Path (Join-Path $ks 'wrangler.toml')) { "kept $ks\wrangler.toml" } else { Copy-Item "$here\keyserver\wrangler.toml" $ks }
     "deployed to $Deploy"
 }

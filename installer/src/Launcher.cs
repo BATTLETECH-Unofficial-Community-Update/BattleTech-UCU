@@ -173,7 +173,8 @@ namespace ReleaseGate
         {
             var l = new List<string>();
             if (s.GraphicsApi == LauncherSettings.D3D11) l.Add("-force-d3d11");
-            else if (s.GraphicsApi == LauncherSettings.D3D12) l.Add("-force-d3d12");
+            // The build ships with graphics jobs off, so the default and D3D11 run as before; only this setting turns on split jobs (the maintainer, 2026-11-20).
+            else if (s.GraphicsApi == LauncherSettings.D3D12) l.Add("-force-d3d12 -force-gfx-jobs split");
             if (!string.IsNullOrWhiteSpace(s.ExtraArgs)) l.Add(s.ExtraArgs.Trim());
             return string.Join(" ", l);
         }

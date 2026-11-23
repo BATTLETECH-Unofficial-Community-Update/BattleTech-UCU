@@ -29,6 +29,16 @@ CREATE TABLE IF NOT EXISTS unlocks (
 );
 CREATE INDEX IF NOT EXISTS unlocks_by_code ON unlocks (code_hash, at);
 
+-- Developer grants (POST /v1/dev-token). hash = a code's hash (codes.hash); dlc = comma-separated content pack names
+-- the token lends (flashpoint, shadowhawkdlc, urbanwarfare, heavymetal); days = how long each token lasts (1-90).
+-- Revoking the code stops new tokens; a token already issued lives until it expires.
+CREATE TABLE IF NOT EXISTS developers (
+  hash TEXT PRIMARY KEY,
+  dlc TEXT NOT NULL DEFAULT '',
+  days INTEGER NOT NULL DEFAULT 30,
+  granted INTEGER NOT NULL
+);
+
 -- Steam accounts that unlocked through Steam, or that are blocked. hash = SHA-256 of "btucu-steam|" + the 64-bit Steam ID,
 -- so the table holds no Steam ID in the clear. borrowed = the first unlock came through Family Sharing.
 CREATE TABLE IF NOT EXISTS steam (

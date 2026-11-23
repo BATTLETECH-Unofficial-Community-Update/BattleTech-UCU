@@ -13,16 +13,28 @@
 #   admin.ps1 family allow|deny        whether Family Sharing borrowers may unlock (default allow)
 #   admin.ps1 gog                      GOG route: unlocks and refusals this week
 #   admin.ps1 gog-off [<message>]      switches the GOG route off (codes still work)         admin.ps1 gog-on
+#   admin.ps1 dev-keygen               makes the developer-token signing key: private JWK to <Keys>\dev-signing-key.json
+#                                      (then `wrangler secret put DEV_SIGNING_KEY`), public key to <Keys>\dev-public-key.xml
+#   admin.ps1 dev-grant <name> [-Dlc all|<pack,pack>] [-Days n]   that code may fetch developer tokens (default all, 30)
+#   admin.ps1 dev-ungrant <name>       it may not (tokens already issued live until they expire)
+#   admin.ps1 devs                     every developer grant and its last token
 # -Local works on the database `npx wrangler dev` uses, for tests. Run from any folder; wrangler runs in this one.
 param(
-    [Parameter(Mandatory = $true, Position = 0)][ValidateSet('init', 'new-code', 'revoke', 'restore', 'codes', 'log', 'retire', 'unretire', 'close', 'open', 'status', 'steam', 'steam-block', 'steam-unblock', 'steam-off', 'steam-on', 'family', 'gog', 'gog-off', 'gog-on')][string]$Command,
+    [Parameter(Mandatory = $true, Position = 0)][ValidateSet('init', 'new-code', 'revoke', 'restore', 'codes', 'log', 'retire', 'unretire', 'close', 'open', 'status', 'steam', 'steam-block', 'steam-unblock', 'steam-off', 'steam-on', 'family', 'gog', 'gog-off', 'gog-on', 'dev-keygen', 'dev-grant', 'dev-ungrant', 'devs')][string]$Command,
     [Parameter(Position = 1)][string]$Arg,
+    [string]$Dlc = 'all',
+    [ValidateRange(1, 90)][int]$Days = 30,
     [switch]$Local,
     [string]$Keys
 )
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot '..\..\UcuPaths.ps1')
-if (-not $Keys) { $Keys = Join-Path $UcuWorkspace 'ReleaseManager\keys' }
+# In the repository the workspace comes from UcuPaths.ps1; in the deployed copy (<workspace>\ReleaseManager\keyserver)
+# there is none, and the keys are beside it.
+$ucuPaths = Join-Path $PSScriptRoot '..\..\UcuPaths.ps1'
+if (-not $Keys) {
+    if (Test-Path $ucuPaths) { . $ucuPaths; $Keys = Join-Path $UcuWorkspace 'ReleaseManager\keys' }
+    else { $Keys = Join-Path $PSScriptRoot '..\keys' }
+}
 $here = $PSScriptRoot
 $where = if ($Local) { '--local' } else { '--remote' }
 # wrangler from this folder's node_modules (npm install), else npx's. Called with $ErrorActionPreference Continue:
@@ -139,4 +151,30 @@ switch ($Command) {
     }
     'gog-on' { D1 "DELETE FROM settings WHERE key IN ('gog', 'gog_message')" | Out-Null; 'gog route on' }
     'status' { D1 "SELECT key, value FROM settings" | Format-Table; D1 "SELECT release, datetime(at, 'unixepoch') AS retired FROM retired" | Format-Table }
+    'dev-keygen' {
+        $private = Join-Path $Keys 'dev-signing-key.json'
+        if (Test-Path $private) { throw "$private exists; move it away first (replacing the key ends every developer token)" }
+        $rsa = New-Object Security.Cryptography.RSACryptoServiceProvider 2048
+        $p = $rsa.ExportParameters($true)
+        $u = { param($b) [Convert]::ToBase64String($b).TrimEnd('=').Replace('+', '-').Replace('/', '_') }
+        $jwk = '{"kty":"RSA","alg":"RS256","ext":true,"key_ops":["sign"],"n":"' + (& $u $p.Modulus) + '","e":"' + (& $u $p.Exponent) + '","d":"' + (& $u $p.D) + '","p":"' + (& $u $p.P) + '","q":"' + (& $u $p.Q) + '","dp":"' + (& $u $p.DP) + '","dq":"' + (& $u $p.DQ) + '","qi":"' + (& $u $p.InverseQ) + '"}'
+        New-Item -ItemType Directory -Force $Keys | Out-Null
+        [IO.File]::WriteAllText($private, $jwk)
+        [IO.File]::WriteAllText((Join-Path $Keys 'dev-public-key.xml'), $rsa.ToXmlString($false))
+        "private key: $private  (Get-Content it | npx wrangler secret put DEV_SIGNING_KEY; back it up with the master secret)"
+        "public key:  $(Join-Path $Keys 'dev-public-key.xml')  (the player's copy)"
+    }
+    'dev-grant' {
+        NeedArg 'a code name'
+        $packs = if ($Dlc -eq 'all') { 'flashpoint,shadowhawkdlc,urbanwarfare,heavymetal' } else { ($Dlc -split '[,\s]+' | Where-Object { $_ }) -join ',' }
+        foreach ($pk in $packs -split ',') { if ($pk -and $pk -notin 'flashpoint', 'shadowhawkdlc', 'urbanwarfare', 'heavymetal') { throw "unknown pack $pk (flashpoint, shadowhawkdlc, urbanwarfare, heavymetal or all)" } }
+        $row = D1 "SELECT hash FROM codes WHERE name = $(Sql $Arg)"
+        if (-not $row) { throw "no code named $Arg (admin.ps1 new-code $Arg first)" }
+        D1 "INSERT OR REPLACE INTO developers (hash, dlc, days, granted) VALUES ($(Sql $row[0].hash), $(Sql $packs), $Days, $now)" | Out-Null
+        "$Arg may fetch developer tokens: dlc=$packs days=$Days"
+    }
+    'dev-ungrant' { NeedArg 'a code name'; D1 "DELETE FROM developers WHERE hash IN (SELECT hash FROM codes WHERE name = $(Sql $Arg))" | Out-Null; "$Arg may not fetch developer tokens" }
+    'devs' {
+        D1 "SELECT c.name, c.revoked, d.dlc, d.days, datetime(d.granted, 'unixepoch') AS granted, (SELECT datetime(MAX(u.at), 'unixepoch') FROM unlocks u WHERE u.code_hash = c.hash AND u.release = 'dev-token' AND u.ok = 1) AS last_token FROM developers d JOIN codes c ON c.hash = d.hash ORDER BY d.granted" | Format-Table
+    }
 }

@@ -685,6 +685,50 @@ namespace ReleaseGate
             }
         }
 
+        public const string LauncherLogName = "ucu-launcher.log";
+
+        /// <summary>
+        /// Before a DirectX 12 start with mod support on: when the Doorstop beside the exe is an older one than UCU's (ModTek's
+        /// own v4.3 crashes when Unity loads d3d12.dll; a ModTek or mod-pack installer run after UCU's last update leaves it),
+        /// copies UCU's loader back, as ApplyMods does. A newer or unidentified copy is kept and named. Each case writes one
+        /// line to ucu-launcher.log and returns it; null when the loader is UCU's own, absent, or mod support is off.
+        /// </summary>
+        public static string CheckD3D12Loader(string dest)
+        {
+            string src = Path.Combine(dest, "ModSupport");
+            if (!ModsWanted(dest) || !ModLoaderFiles.All(f => File.Exists(Path.Combine(src, f)))) return null;
+            string have = Path.Combine(dest, "winhttp.dll"), ours = Path.Combine(src, "winhttp.dll");
+            string line;
+            try
+            {
+                if (!File.Exists(have) || File.ReadAllBytes(have).SequenceEqual(File.ReadAllBytes(ours))) return null;
+                Version v = DoorstopVersion(have), u = DoorstopVersion(ours);
+                if (v != null && u != null && v < u)
+                {
+                    foreach (string f in ModLoaderFiles) File.Copy(Path.Combine(src, f), Path.Combine(dest, f), true);
+                    line = "DirectX 12: replaced the mod loader beside the game (Doorstop v" + v + ", which crashes on DirectX 12) with UCU's v" + u + ".";
+                }
+                else
+                    line = "DirectX 12: kept the mod loader beside the game (winhttp.dll " + (v == null ? "of unknown version" : "Doorstop v" + v)
+                         + "), which isn't UCU's v" + u + ". If the game crashes at start, turn mod support off and on in the Mods tab, or pick DirectX 11.";
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                line = "DirectX 12: couldn't check the mod loader beside the game: " + e.Message;
+            }
+            try { File.AppendAllText(Path.Combine(dest, LauncherLogName), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + line + "\r\n"); }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { }
+            return line;
+        }
+
+        /// <summary>A Doorstop winhttp.dll's file version (NeighTools); null for any other file.</summary>
+        static Version DoorstopVersion(string path)
+        {
+            var i = System.Diagnostics.FileVersionInfo.GetVersionInfo(path);
+            Version v;
+            return i.ProductName == "NeighTools" && Version.TryParse(i.FileVersion, out v) ? v : null;
+        }
+
         /// <summary>Stops after the files in progress when cancelled. Finished files stay, and a later run skips them.</summary>
         public static InstallResult Install(RetailCheck c, string dest, InstallProgress progress, CancellationToken stop, out string message)
         {

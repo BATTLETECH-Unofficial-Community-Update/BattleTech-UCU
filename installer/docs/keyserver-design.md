@@ -302,3 +302,16 @@ with `GOG_FINGERPRINTS` holding a random fingerprint plus the GOG 1.9.1 install'
 - A dummy proof by hand got 403 `gog`, and a malformed one 400.
 
 Not run: the deployed Worker, which needs the maintainer's `GOG_FINGERPRINTS` secret and deploy (`../keyserver/README.md`).
+
+## Developer tokens (2026-11-20)
+
+The maintainer, 2026-11-20: a handful of developers run release players with no store, and "our word in the token are sufficient".
+`POST /v1/dev-token {"code"}` answers a code with a `developers` row (`admin.ps1 dev-grant`) with a token signed by the
+`DEV_SIGNING_KEY` Worker secret (RSA 2048 JWK, RSASSA-PKCS1-v1_5 SHA-256). The share's HMAC can't serve: the player would
+need the master secret to check it. The player carries only the public key and checks the token offline, so a run needs
+no network. Expiry (1-90 days per grant) is the only revocation. Use and commands: `../keyserver/README.md`.
+
+Tested on `wrangler dev --local` (2026-11-20, scratch copy): a granted code got a token that checked `VALID`; a token
+with an edited payload and a token checked against another key read `BAD-SIGNATURE`; a token past `exp` read `EXPIRED`;
+an ungranted, an unknown and a revoked code got 403 `code`; `/v1/unlock` still answered a code; `log` and `devs` listed
+the fetches. Not run: the server with no `DEV_SIGNING_KEY` (503 `dev-off`), and the deployed Worker.

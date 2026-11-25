@@ -2,9 +2,10 @@
 
 Status: built 2026-11-13 and tested against a local Worker (Testing plan, below); deployed to Cloudflare the same day
 (codes only, until the Steam route is deployed). Players who own BATTLETECH on Steam unlock through Steam with no code
-(*Steam route*); GOG installs unlock on their files with no code (*GOG route*, 2026-11-15); the maintainer's own access codes (no
-itch keys) are the manual route. A package needs an access code when the Release Manager's two unlock fields are set;
-with them empty it packs v2 as before. Packages up to 10A (vault v2) are unaffected. Setup and use: `../keyserver/README.md`.
+(*Steam route*); GOG installs unlock on their files with no code (*GOG route*, 2026-11-15); the maintainer's own access codes
+are the manual route. A package needs an access code when the Release Manager's two unlock fields are set;
+with them empty it packs an unlocked package. Since 2026-11-25 the packer writes vault v4 (*Vault v4*); v2 and v3 packages
+still install. Setup and use: `../keyserver/README.md`.
 
 ## Goal
 
@@ -21,26 +22,37 @@ the server checks the person (their code), never the program.
 
 ## Keys
 
-Today (vault v2): `package key` = the reused content key. The vault holds one slot per accepted retail
-fingerprint, each sealing the package key under that fingerprint. The manifest is sealed under the package key.
-Blob names, keys and IVs come from the package key plus each file's plaintext SHA-256.
+Vault v2: `package key` = the reused content key. The vault holds one slot per accepted retail fingerprint, each sealing
+the package key under that fingerprint. The manifest is sealed under the package key.
 
-v3 adds a **release share**:
+v3 adds a **release share**, and v4 **key separation**:
 
 ```
 release id   = 16 random bytes, made at pack time, stored in the vault in clear
 share        = HMAC-SHA256(master secret, "btucu-share|" + release id)
-slot secret  = HKDF(fingerprint || share, salt = slot salt, info = "slot3")
-manifest key = HKDF(package key, salt = share, info = "manifest3")
+slot secret  = HKDF(fingerprint || share, salt = slot salt, info = "slot4")       v3: "slot3"
+manifest key = HKDF(package key, salt = share, info = "manifest4")                v3: "manifest3"
+file key     = HKDF(package key, salt = SHA-256 of the blob's plain bytes, info = "file4")        v4
+blob IV      = first 16 bytes of the same with info = "blob4-iv"                                  v4
+blob name    = "data/v4-" + 32 hex digits of the same with info = "blob4-name" + ".pak"           v4
 ```
+
+A blob's plain bytes are the whole file, or the residual of a file rebuilt from retail ranges.
 
 - **One master secret, no per-release upload.** The Worker and the Release Manager both hold the master secret;
   each release's share is computed from it, so packing a release needs no server step.
-- **Updates still download only what changed.** The package key and the blob derivation are unchanged, so an
-  unchanged file keeps its blob.
-- **An old package key doesn't open a new release.** A player who dumps the package key from memory during one
-  install can derive a blob's key only from the file's plaintext hash. Those hashes are in the manifest, and a new
-  release's manifest needs that release's share. So a changed file stays locked; unchanged files they already have.
+- **Updates still download only what changed.** The content key and the blob derivation are the same from one v4 release
+  to the next, so an unchanged file keeps its blob; and the installer skips a file its record shows as current, whatever
+  its blob is called. An install from a v3 release updates to v4 by downloading the changed files only.
+- **A blob's key has two inputs:** the content key and the hash of the blob's plain bytes. The hashes are in the sealed
+  manifest, which a locked release seals under its own share. Bytes that someone has, can guess or can look up are no
+  secret to them.
+- **A release's own share, key and manifest open that release for good.** A retired release is one the server no longer
+  hands the share out for; retiring recalls nothing already handed out.
+- **The hashes are key material.** The SHA-256 of a packaged file or residual never goes in anything public: manifests use
+  SHA-512 (`../src/PublicManifest.cs`). The install record in the player's own folder holds them and is never collected.
+- **A new content key** (`ReleasePack --new-key` with `--previous`) is possible at any release. It shares no blob with the
+  releases before it, so packing seals everything anew; players still download the changed files only.
 - **The master secret** lives at `<workspace>\ReleaseManager\keys\master-secret.txt` (beside the content key,
   backed up the same way, never in the repository or a package) and as a Worker secret. If it leaks, make a new one:
   later releases use it, and earlier releases stay on the old one, or are retired.
@@ -57,6 +69,23 @@ manifest  (as v2, sealed with the v3 manifest key)
 
 The new magic makes older installers hand off to the release's own installer (the existing
 NeedsNewerInstaller path), so an old installer never misreads a v3 vault.
+
+## Vault v4
+
+```
+"BTU6GAR4"
+locked (1 byte)                        1 with the unlock server; 0 without, and then no id or URL
+release id, unlock URL                 as v3
+slots     (as v3, sealed under v4's own labels; unlocked: the package key under the fingerprint)
+manifest  (as v3, with an 8th column: the SHA-256 of a ranged entry's residual, empty for other entries)
+store sections (as v3)
+```
+
+One magic covers packages with and without retail ranges. Every label is v4's own, so a vault with its magic changed to
+another version's opens nothing. Online, an older installer hands off to the release's own, as for v3. Offline, a v4
+package needs its own installer.
+
+The server is unchanged: it answers for a release id, and never sees a vault.
 
 ## Server (Cloudflare Worker + D1)
 
@@ -116,22 +145,17 @@ Free tier (100k requests a day, D1 100k writes a day) is far above this use.
   - The server's closed message.
   - "Couldn't reach the unlock server (…). Check your internet connection and try again."
 - **The share is never written to disk.** Every install or update asks again: one request each.
-- **Itch website zip, loose folder and `--remote`** all read the same vault, so all three get this.
+- **A package zip, a loose folder and `--remote`** all read the same vault, so all three get this.
 
 ## Release Manager
 
 - **New setting:** the master secret file, with a "Create" button if it's missing, in the same way as the content key.
 - **Packing:**
-  - **v3 by default.** A "No unlock server (v2)" tick box keeps the old format.
+  - **Locked by default.** With both unlock fields empty it packs an unlocked package, which anyone with BATTLETECH installs.
   - **The log** shows the release id.
   - **The test install** unlocks with `--share-file`, written to a temporary file and deleted afterwards.
 - **Push:** before pushing a v3 release, check that the server answers `/v1/unlock` for that release id with a
   test code (`keys\test-code.txt`, a code named `release-manager-test`). Refuse to push if it doesn't.
-
-## Not built: itch download keys as codes
-
-The maintainer chose our own codes (2026-11-13). The Worker could later also accept an itch download key, checked with itch's
-server-side API.
 
 ## Testing plan
 
@@ -202,7 +226,7 @@ Agents write and test the Worker locally. They don't create the account, log in 
 - The licence check that is fully server-side is `CheckAppOwnership`. It needs Paradox's publisher key.
 
 **Release Manager:** before a GitHub upload, it sends the live server a dummy ticket. The dummy must reach Valve and be
-refused there, which shows the route is on and the key works. Before an itch.io push it only warns.
+refused there, which shows the route is on and the key works.
 
 ## GOG route (2026-11-15)
 
@@ -229,7 +253,7 @@ like the master secret: only the Worker and the packer's own reads of the GOG in
 **Release Manager and ReleasePublish:** for a package with a GOG section (`ucu-manifest-gog.tsv`), `CheckServer` also
 checks the GOG route. With a GOG install on that PC, it sends a real proof and expects the release's share, which shows
 the secret holds that fingerprint. Without one, it sends a dummy proof and expects 403 `gog`, which shows only that the
-route is on. A GitHub upload is refused on a problem; an itch.io push only warns.
+route is on. A GitHub upload is refused on a problem.
 
 ## Test record (2026-11-13)
 
@@ -302,6 +326,13 @@ with `GOG_FINGERPRINTS` holding a random fingerprint plus the GOG 1.9.1 install'
 - A dummy proof by hand got 403 `gog`, and a malformed one 400.
 
 Not run: the deployed Worker, which needs the maintainer's `GOG_FINGERPRINTS` secret and deploy (`../keyserver/README.md`).
+
+## Test record: vault v4 (2026-11-25)
+
+Synthetic packages with throwaway keys; `wrangler dev --local` on the unchanged `worker.js`. `test/vault4.ps1` (packs,
+installs, updates v3 to v4 and v4 to v4, damage, stopped and cancelled installs, older installers), `test/gog-unlock.ps1`,
+`test/previous.ps1` and `test/ranges.ps1` pass. The code and GOG routes unlocked v3 and v4 packages from the same server;
+the Steam route was run with Valve's answer stubbed. Not run: the deployed Worker, and a real Steam ticket.
 
 ## Developer tokens (2026-11-20)
 

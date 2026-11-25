@@ -349,6 +349,32 @@ namespace ReleaseGate
             }
         }
 
+        /// <summary>
+        /// Replaces this exe with a newer one (Remote.NewerLauncher). A running exe can't be overwritten, so it is renamed to
+        /// .old first, and renamed back if the new one can't take its place. Throws IOException or UnauthorizedAccessException.
+        /// </summary>
+        public static void ReplaceSelf(byte[] exe)
+        {
+            string self = Assembly.GetExecutingAssembly().Location, fresh = self + ".new", old = self + ".old";
+            try
+            {
+                File.WriteAllBytes(fresh, exe);
+                if (File.Exists(old)) File.Delete(old);
+                File.Move(self, old);
+                try { File.Move(fresh, self); }
+                catch
+                {
+                    File.Move(old, self);
+                    throw;
+                }
+            }
+            catch
+            {
+                try { File.Delete(fresh); } catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { }
+                throw;
+            }
+        }
+
         static bool Same(string a, string b)
         {
             var fa = new FileInfo(a);

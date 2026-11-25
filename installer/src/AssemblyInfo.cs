@@ -1,6 +1,8 @@
 // Version resources for the three exes. An unsigned exe with a blank description, product and company and version 0.0.0.0
 // is a strong signal for Defender's cloud ML models (reported 2026-11-13 as Win32/Contebrew.A!ml), so every exe states what it is.
 // build.ps1 passes one of SETUP, MANAGER or PACK.
+// Raise AssemblyFileVersion with every installer change that is published: a launcher offers itself the published one only
+// when that number is higher (Remote.NewerLauncher). publish-source.ps1 refuses a source change without it.
 using System.Reflection;
 using System.Runtime.InteropServices;
 
@@ -18,6 +20,6 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyCompany("BattleTech UCU community project")]
 [assembly: AssemblyCopyright("BattleTech UCU contributors. Unofficial; not affiliated with Paradox Interactive or Harebrained Schemes.")]
 [assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyFileVersion("1.0.1.0")]
 [assembly: AssemblyInformationalVersion("1.0.0")]
 [assembly: ComVisible(false)]

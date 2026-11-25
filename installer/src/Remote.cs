@@ -59,7 +59,7 @@ namespace ReleaseGate
         public string Version;          // the release's tag
         public string Page;             // its html_url, or null
         public string Published;        // published_at, or null
-        public string InstallerSha256;  // the release's installer, from GitHub's digest field; null when it gives none
+        public RemoteAsset Installer;   // the release's BattleTechUCUSetup.exe, or null
     }
 
     /// <summary>An HTTP status that retrying won't change.</summary>
@@ -141,10 +141,15 @@ namespace ReleaseGate
             foreach (object o in release.TryGetValue("assets", out list) && list is object[] ? (object[])list : new object[0])
             {
                 var d = o as Dictionary<string, object>;
-                object digest;
+                object size;
                 if (d == null || !string.Equals(Text(d, "name"), InstallerName, StringComparison.OrdinalIgnoreCase)) continue;
-                if (d.TryGetValue("digest", out digest) && digest is string && ((string)digest).StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
-                    s.InstallerSha256 = ((string)digest).Substring(7);
+                if (!d.TryGetValue("size", out size) || Text(d, "browser_download_url").Length == 0) continue;
+                string digest = Text(d, "digest");
+                s.Installer = new RemoteAsset
+                {
+                    Name = InstallerName, Size = Convert.ToInt64(size), Url = Text(d, "browser_download_url"),
+                    Sha256 = digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) ? digest.Substring(7) : null,
+                };
             }
             return s;
         }
@@ -530,6 +535,36 @@ namespace ReleaseGate
                 got += n;
             }
             return b;
+        }
+
+        /// <summary>
+        /// The release's installer, when it is a newer launcher than this exe; otherwise null. It must differ from this exe and
+        /// carry a higher file version, so a build that isn't released yet is never offered the published one. A release
+        /// without a digest for it offers nothing: the download couldn't be checked.
+        /// </summary>
+        public static byte[] NewerLauncher(RemoteAsset installer, CancellationToken stop)
+        {
+            if (installer == null || installer.Sha256 == null || installer.Size > 64L << 20) return null;
+            string self = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            using (var sha = Gate.NewSha())
+                if (string.Equals(Gate.Hex(sha.ComputeHash(File.ReadAllBytes(self))), installer.Sha256, StringComparison.OrdinalIgnoreCase)) return null;
+            byte[] exe = Whole(new RemotePackage(), installer, stop);
+            string temp = Path.GetTempFileName();
+            try
+            {
+                File.WriteAllBytes(temp, exe);
+                return FileVersion(temp) > FileVersion(self) ? exe : null;
+            }
+            finally
+            {
+                try { File.Delete(temp); } catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { }
+            }
+        }
+
+        static Version FileVersion(string path)
+        {
+            Version v;
+            return Version.TryParse(FileVersionInfo.GetVersionInfo(path).FileVersion, out v) ? v : new Version();
         }
 
         /// <summary>

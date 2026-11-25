@@ -32,6 +32,7 @@ namespace ReleaseGate
         readonly Button _play = new UcuButton(UcuButton.Look.Primary) { Name = "Play", Text = "Play", Enabled = false };
         readonly Button _homeUpdate = new UcuButton { Name = "HomeUpdate", Text = "Check for updates" };
         readonly Button _homeNotes = new UcuButton { Name = "ReleaseNotes", Text = "Release notes" };
+        readonly Button _homeLauncher = new UcuButton { Name = "UpdateLauncher", Text = "Update launcher", Visible = false };
 
         // Mods
         readonly CheckBox _modsOn = new CheckBox { Name = "ModsOn", Text = "Mod support: load ModTek mods from the install's Mods folder", AutoSize = true, Margin = new Padding(3, 0, 3, 8) };
@@ -68,6 +69,7 @@ namespace ReleaseGate
         LauncherSettings _settings = LauncherSettings.Load();
         ReleaseSummary _latest;
         string _latestProblem;
+        byte[] _newLauncher;        // a newer published launcher, downloaded and checked; null when there is none
         int _homeId;
         bool _loadingSettings;
 
@@ -124,11 +126,12 @@ namespace ReleaseGate
             Span(t, _homeMods);
             Span(t, Heading("Newest release"));
             Span(t, _homeLatest);
-            Span(t, Row(_play, _homeUpdate, _homeNotes));
+            Span(t, Row(_play, _homeUpdate, _homeNotes, _homeLauncher));
             Span(t, _homeStatus);
             _play.Click += (s, e) => Play();
             _homeUpdate.Click += (s, e) => HomeUpdate();
             _homeNotes.Click += (s, e) => Launcher.Open(Launcher.NotesPage(_latest));
+            _homeLauncher.Click += (s, e) => UpdateLauncher();
         }
 
         /// <summary>The install the launcher tabs act on, or null while the Install tab's box isn't a usable path.</summary>
@@ -225,9 +228,48 @@ namespace ReleaseGate
                 {
                     _latest = t.Result;
                     _latestProblem = null;
+                    CheckLauncher(_latest.Installer);
                 }
                 QueueHome();
             }, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+
+        /// <summary>Offers the newest release's launcher when it is newer than this one. A check that fails says nothing.</summary>
+        void CheckLauncher(RemoteAsset installer)
+        {
+            if (_newLauncher != null) return;
+            Task.Run(() => Remote.NewerLauncher(installer, System.Threading.CancellationToken.None)).ContinueWith(t =>
+            {
+                if (IsDisposed || t.IsFaulted || t.Result == null || _newLauncher != null) return;
+                _newLauncher = t.Result;
+                _homeLauncher.Visible = true;
+                // An install under way, or a repair about to start, isn't interrupted: the button stays.
+                if (_installing || _repair != null) return;
+                if (MessageBox.Show(this, "A new version of this launcher is available.\n\nUpdate it and restart the launcher now?", Title,
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                    UpdateLauncher();
+            }, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+
+        void UpdateLauncher()
+        {
+            if (_installing)
+            {
+                Show(_homeStatus, "Wait for the install to finish, then update the launcher.", Bad);
+                return;
+            }
+            try
+            {
+                Launcher.ReplaceSelf(_newLauncher);
+                Setup.Restart();
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is System.ComponentModel.Win32Exception)
+            {
+                _tabs.SelectedTab = _homeTab;
+                Show(_homeStatus, "The launcher couldn't be updated: " + e.Message + " You can download it from " + Launcher.ReleasesPage + ".", Bad);
+                return;
+            }
+            Close();
         }
 
         /// <summary>Update (or install, or repair): reads the release's package and hands over to the Install tab.</summary>
@@ -251,6 +293,13 @@ namespace ReleaseGate
             {
                 Show(_homeStatus, "BattleTech UCU is already running.", Bad);
                 return;
+            }
+            if (Installer.Unfinished(dest))
+            {
+                DialogResult r = MessageBox.Show(this, "The last install or update of this folder didn't finish, so it may mix files of two versions and graphics or saves may go wrong.\n\nRepair it now? No starts the game as it is.",
+                    Title, MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button1);
+                if (r == DialogResult.Yes) HomeUpdate();
+                if (r != DialogResult.No) return;
             }
             string loader = _settings.GraphicsApi == LauncherSettings.D3D12 ? Installer.CheckD3D12Loader(dest) : null;
             try { Launcher.StartGame(dest, _settings); }

@@ -139,6 +139,13 @@ namespace ReleaseGate
             }
         }
 
+        /// <summary>Starts this exe's file again with this run's arguments, after Launcher.ReplaceSelf.</summary>
+        public static void Restart()
+        {
+            string self = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(self, string.Join(" ", Arguments.Select(Quote))) { UseShellExecute = false }).Dispose();
+        }
+
         /// <summary>This run's arguments, with --remote set to the source that was used, quoted for a command line.</summary>
         public static string ArgumentsFor(string source)
         {

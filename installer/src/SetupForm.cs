@@ -74,6 +74,7 @@ namespace ReleaseGate
         CancellationTokenSource _stop;
         int _checkId, _planId, _destId;
         bool _destEdited, _settingDest, _installing, _installed, _opening;
+        string _repair;             // the folder a failed Verify install is to repair once the package is read; null when none
         string _source = Remote.DefaultSource;
         volatile string _phase = "Installing";
 
@@ -254,6 +255,7 @@ namespace ReleaseGate
             {
                 if (id != _checkId || IsDisposed) return;
                 _check = t.Result;
+                if (_check.Problem != null) _repair = null;
                 if (_check.CodeProblem)
                 {
                     Show(_retailNote, "BATTLETECH found.", Good);
@@ -363,6 +365,8 @@ namespace ReleaseGate
                     Show(_destNote, link.Length > 0 ? used + " " + link : used, Good);
                 }
                 _go.Enabled = problem == null && !_installing;
+                if (problem != null) _repair = null;
+                else if (Installer.Remote == null) RepairIfAsked();
             }, TaskScheduler.FromCurrentSynchronizationContext());
         }
 
@@ -395,6 +399,7 @@ namespace ReleaseGate
                     Show(_destNote, link.Length > 0 ? what + " " + link : what, Good);
                 }
                 if (!_installed) _go.Text = p.Same > 0 ? "Update" : "Install";
+                RepairIfAsked();
             }, TaskScheduler.FromCurrentSynchronizationContext());
         }
 
@@ -413,6 +418,7 @@ namespace ReleaseGate
                 _opening = false;
                 if (t.IsFaulted)
                 {
+                    _repair = null;
                     Show(_status, "Couldn't get the release: " + t.Exception.GetBaseException().Message, Bad);
                     // With no package beside the installer the release is the only way on, so offer it again.
                     _updates.Text = Installer.HasPackage ? "Check for updates" : "Try again";
@@ -433,11 +439,13 @@ namespace ReleaseGate
                 Show(_status, "Release " + p.Version + " found online.", Good);
                 QueueCheck();
                 QueueHome();
+                CheckLauncher(p.Installer);
             }, TaskScheduler.FromCurrentSynchronizationContext());
         }
 
         void OfferNewerInstaller(RemotePackage p, string source)
         {
+            _repair = null;
             if (Setup.Handed)
             {
                 Show(_status, "Release " + p.Version + " needs a newer installer than the one it ships.", Bad);
@@ -608,7 +616,27 @@ namespace ReleaseGate
                 if (_installed) _go.Enabled = true; else ShowDest();
                 ShowVerify();
                 SetLauncherInputs(true);
+                if (r == InstallResult.Damaged && MessageBox.Show(this, text + "\n\nRepair now? It installs the newest release's copy of these files, so an older install is updated too.", Title,
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                    StartRepair(dest);
             }, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+
+        /// <summary>Reads the package again and installs into dest as soon as it can (RepairIfAsked).</summary>
+        void StartRepair(string dest)
+        {
+            _repair = dest;
+            _installed = false;
+            _destEdited = true;     // the check below must not move the folder to the default one
+            if (Installer.HasPackage) QueueCheck();
+            else if (!_opening) OpenRemote(_source);
+        }
+
+        void RepairIfAsked()
+        {
+            string dest = _repair;
+            _repair = null;
+            if (dest != null && _go.Enabled && string.Equals(DestFull(), dest, StringComparison.OrdinalIgnoreCase)) GoPressed();
         }
 
         void ShowProgress()

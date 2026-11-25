@@ -285,7 +285,9 @@ namespace ReleaseGate
 
         /// <summary>
         /// Checks every file the install folder's public manifest lists: present, same size, same SHA-512. Lists what differs
-        /// in message. Files the manifest doesn't list (saves, logs, settings, mods) are not checked.
+        /// in message. Files the manifest doesn't list (saves, logs, settings, mods) are not checked. The differing files are
+        /// marked stale in the install record, so the next run rewrites them: one damaged with its size and write time kept
+        /// looks current to the record.
         /// </summary>
         public static InstallResult Verify(string dest, InstallProgress progress, CancellationToken stop, out string message)
         {
@@ -325,8 +327,19 @@ namespace ReleaseGate
             if (bad.Count > 0)
             {
                 var l = bad.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
-                message = string.Format("{0} of {1} files differ from the public manifest: {2}{3}. Run the installer again to repair them. {4}",
-                    l.Count, rows.Count, string.Join(", ", l.Take(5)), l.Count > 5 ? ", ..." : "", sum);
+                string next = "Run the installer again to repair them.";
+                try
+                {
+                    Dictionary<string, string[]> record = ReadRecord(dest);
+                    foreach (string b in l) MarkStale(record, b.Substring(b.IndexOf(' ') + 1));
+                    if (record.Count > 0) WriteRecord(dest, record);
+                }
+                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+                {
+                    next = "They couldn't be marked for repair (" + e.Message + "), so a repair may skip them.";
+                }
+                message = string.Format("{0} of {1} files differ from the public manifest: {2}{3}. {4} {5}",
+                    l.Count, rows.Count, string.Join(", ", l.Take(5)), l.Count > 5 ? ", ..." : "", next, sum);
                 return InstallResult.Damaged;
             }
             message = string.Format("All {0} files match the public manifest. {1}", rows.Count, sum);
@@ -397,6 +410,17 @@ namespace ReleaseGate
         // unchanged and removes files the new version no longer has.
         public const string RecordName = ".btu6-install.tsv";
 
+        // In the folder from an install's first write until it succeeds. While it is there the folder may hold files of two
+        // versions: the last run failed, was cancelled or was killed.
+        public const string PendingName = ".btu6-updating";
+
+        /// <summary>The last install or update of this folder didn't finish.</summary>
+        public static bool Unfinished(string dest)
+        {
+            try { return !string.IsNullOrEmpty(dest) && File.Exists(Path.Combine(dest, PendingName)); }
+            catch (Exception e) when (e is ArgumentException || e is NotSupportedException || e is IOException) { return false; }
+        }
+
         static Dictionary<string, string[]> ReadRecord(string dest)
         {
             var r = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
@@ -422,6 +446,13 @@ namespace ReleaseGate
         {
             var f = new FileInfo(file);
             return new[] { f.Length.ToString(), sha, f.LastWriteTimeUtc.Ticks.ToString() };
+        }
+
+        /// <summary>The next run rewrites the file. Its row stays, so a version without the file still deletes it.</summary>
+        static void MarkStale(IDictionary<string, string[]> record, string path)
+        {
+            string[] had;
+            if (record.TryGetValue(path, out had)) record[path] = new[] { had[0], "-", had[2] };
         }
 
         /// <summary>The file is there as this installer last wrote it, with the hash this entry wants.</summary>
@@ -738,6 +769,7 @@ namespace ReleaseGate
             progress.Total = c.Need;
             var bad = new List<string>();
             Directory.CreateDirectory(dest);
+            File.WriteAllText(Path.Combine(dest, PendingName), "An install or update of this folder started and hasn't finished. Run the installer again.\r\n");
             Dictionary<string, string[]> old = ReadRecord(dest);
             var now = new ConcurrentDictionary<string, string[]>(old, StringComparer.OrdinalIgnoreCase);
             int same = 0, linkedFiles = 0;
@@ -771,8 +803,7 @@ namespace ReleaseGate
                             Interlocked.Increment(ref same);
                             return;
                         }
-                        string[] gone;
-                        now.TryRemove(e.Path, out gone);
+                        MarkStale(now, e.Path);
                         Directory.CreateDirectory(Path.GetDirectoryName(target));
                         string part = target + ".part";
                         bool ok;
@@ -854,13 +885,8 @@ namespace ReleaseGate
                         return InstallResult.Failed;
                     }
                 }
-                if (bad.Count > 0)
-                {
-                    text = string.Format("{0} file(s) failed their check, first {1}. {2} or download this package again.", bad.Count, bad[0],
-                        c.Store == Gate.Gog ? "Verify or repair BATTLETECH in GOG Galaxy (or reinstall it from GOG)" : "Verify BATTLETECH in Steam");
-                    return InstallResult.Damaged;
-                }
-                // Files an earlier version installed that this one doesn't have.
+                // Files an earlier version installed that this one doesn't have. They go even when a file failed its check: one
+                // left beside its replacement can be picked up by the game (a bundle patch is found by its name's start).
                 var keep = new HashSet<string>(c.Entries.Select(e => e.Path), StringComparer.OrdinalIgnoreCase);
                 string root = Path.GetFullPath(dest).TrimEnd('\\') + "\\";
                 int removed = 0;
@@ -872,17 +898,26 @@ namespace ReleaseGate
                     string[] gone;
                     now.TryRemove(path, out gone);
                 }
+                // A copy of the public manifest stays with the install, for Verify install and verify.ps1. An install from a
+                // package without one removes an older copy, which would no longer describe the folder. After a failed check too,
+                // so Verify install names the files that failed instead of comparing with the version before.
+                string kept = Path.Combine(dest, PublicManifest.FileName);
+                if (c.ManifestBytes != null) File.WriteAllBytes(kept, c.ManifestBytes);
+                else if (File.Exists(kept)) File.Delete(kept);
+                if (bad.Count > 0)
+                {
+                    text = string.Format("{0} file(s) failed their check, first {1}. {2} or download this package again.", bad.Count, bad[0],
+                        c.Store == Gate.Gog ? "Verify or repair BATTLETECH in GOG Galaxy (or reinstall it from GOG)" : "Verify BATTLETECH in Steam");
+                    if (old.Count > 0) text += " Until then this folder mixes two versions of UCU, so graphics or saves may go wrong.";
+                    return InstallResult.Damaged;
+                }
                 string downloads = Path.Combine(dest, DownloadName);
                 if (Directory.Exists(downloads))
                 {
                     try { Directory.Delete(downloads, true); }
                     catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { }
                 }
-                // A copy of the public manifest stays with the install, for Verify install and verify.ps1. An install from a
-                // package without one removes an older copy, which would no longer describe the folder.
-                string kept = Path.Combine(dest, PublicManifest.FileName);
-                if (c.ManifestBytes != null) File.WriteAllBytes(kept, c.ManifestBytes);
-                else if (File.Exists(kept)) File.Delete(kept);
+                File.Delete(Path.Combine(dest, PendingName));
                 text = string.Format("Installed {0} files, {1:F2} GiB.", c.Entries.Count, c.Need / 1073741824.0);
                 if (same > 0 || removed > 0)
                     text += string.Format(" {0} were already up to date; {1} old file(s) removed.", same, removed);

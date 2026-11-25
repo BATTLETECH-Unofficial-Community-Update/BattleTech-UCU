@@ -64,10 +64,7 @@ We are not game designers and we are not here to impose our vision upon BATTLETE
 
 Linux (Proton) is ready for testing. If you try it on Linux or a Steam Deck, please tell us how it went through the Issues link. We are trying to determine whether there is community interest in a native Linux install, or if Proton is sufficient. Submit feedback [here](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/23).
 
-MacOS is harder for two reasons:
-
-- I have no Mac hardware available for it, so we would depend on somebody in the community who does coming on board, or my getting access to a gaming Mac
-- We'd be limited to Rosetta/x86 builds because that's what HBS released, and the commercial binaries required by the game (WWise for audio, Bink for video) did not include Apple native silicon versions. We cannot include non-commercial versions on our own, so PDX would have to acquire these and make them available in order for an Apple native edition to be contemplated (much less built). But if they do, we'll tackle it!
+MacOS is harder as I have no Mac hardware, but as we have a developer who does and other community members willing to test it ... a MacOS Apple Silicon (+Universal) build is now in the works.
 
 ## What's different from the 2018 retail game (and what isn't)
 

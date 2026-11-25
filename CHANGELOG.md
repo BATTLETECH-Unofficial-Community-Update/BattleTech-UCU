@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.3.2-4B (BT-UCU Beta 4.2)
+
+This is a bugfix release that includes a fix to loud and/or repetitive Battle Armor sounds in modpacks like BTA that use battle armor, a D3D12 texture issue, a combat log fix, and an update to the installer for widescreen resolutions. 
+
+- **With mods, the Combat Log mod's window shows its resize grip again** ([issue #31](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/31)). The original game draws a mod's text in whole pixels and UCU drew it slightly narrower, so the window's bottom bar came out short and the *PREFS* button covered the grip; UCU now draws it the original game's way.
+- **With CustomUnits mods (BTA and others), engine sounds no longer pile up during a battle, most noticeably with battle armor.** Each battle armor move left a tank engine running for the rest of the battle, and with StrategicOperations every unit's idle engine restarted each round on top of the old ones; each unit now plays one idle engine. Idle units sound quieter than before in these packs.
+- **With in-mission saves on and Abilifier (BTA and others), pilots keep their resolve when a battle is loaded** ([issue #45](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/45)). Abilifier counts resolve only for units it saw enter the battle, so after a load the resolve bar stayed at 0 and abilities that cost resolve could be used anyway; a loaded battle now has the resolve it was saved with. A save made before this update starts at 0 and gains resolve as usual.
+- **D3D12 no longer draws red lines when a texture filter is forced from outside the game** ([issue #44](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/44)). The screen's colour-grading table was read in a way a forced filter blended into red lines; UCU now reads it so the filter cannot touch it.
+- **The launcher window resizes and opens tall enough for Install / Update** ([issue #46](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/46)). It was a fixed size, so the Install / Update page scrolled even on a widescreen display.
+- **This update changes the package format.** Players who update by hand download the full package once, and need the new installer.
+
 ## 2.3.1-4B (BT-UCU Beta 4.1)
 
 This is a bugfix release that fixes a long-standing retail bug in which a mech could spawn on a tile and then not be able to move (see below for details!). Additional fixes clean up video playback, add better support for BEX:T (we left out submod compatibility last time! sorry about that), make the launcher a little more forgiving, it now recognizes Hyades Rim and BEX:T. 

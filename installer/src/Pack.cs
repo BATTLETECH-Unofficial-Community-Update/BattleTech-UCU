@@ -164,6 +164,9 @@ namespace ReleaseGate
             "VisualBuildProbe.dll" };
         // Present in a dev retail folder but not in Steam's depot, so they can't be copied from a user's install.
         static readonly string[] NeverFromRetail = { "steam_appid.txt" };
+        // HBS's settings and logger overrides, which players and mod installers edit in retail (GitHub issue 40: BEX turns
+        // off the splash screens there). Packed, so an edit in retail never fails the install.
+        const string PlayerSettings = "BattleTech_Data/StreamingAssets/data/debug/";
 
         static int Main(string[] a)
         {
@@ -372,6 +375,7 @@ namespace ReleaseGate
                 var e = new Entry { Path = rel, Size = size, Blob = "", BlobSha256 = "", RetailPath = "", Sha256 = sha };
                 List<string> candidates;
                 if (!NeverFromRetail.Contains(Path.GetFileName(rel), StringComparer.OrdinalIgnoreCase)
+                    && !rel.Replace('\\', '/').StartsWith(PlayerSettings, StringComparison.OrdinalIgnoreCase)
                     && index.TryGetValue(Path.GetFileName(rel) + "|" + size, out candidates))
                     foreach (string c in candidates)
                         if (Gate.HashFile(Path.Combine(retail, c)) == sha) { e.RetailPath = c; break; }

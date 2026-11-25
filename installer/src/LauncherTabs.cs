@@ -1,5 +1,5 @@
 // The launcher's tabs around the Install tab (SetupForm.cs): Home (version, update check, Play), Mods (mod support and a
-// linked mod pack: BTA, RogueTech or another ModTek v4 pack), Settings (how the game starts, update check) and Tools
+// linked mod pack: BTA, RogueTech, BEX:T, Hyades Rim or another ModTek v4 pack), Settings (how the game starts, update check) and Tools
 // (verify, folders, shortcuts, reporting a problem). Every tab works on the install named in the Install tab's
 // "Install to" box: the folder this exe sits in for the launcher copy, otherwise the last install the launcher managed.
 using System;
@@ -38,6 +38,8 @@ namespace ReleaseGate
         readonly Label _modsNote = Note("ModsNote");
         readonly RadioButton _packBta = new RadioButton { Name = "PackBta", Text = "BTA (BattleTech Advanced 3062)", AutoSize = true };
         readonly RadioButton _packRt = new RadioButton { Name = "PackRogueTech", Text = "RogueTech", AutoSize = true };
+        readonly RadioButton _packBex = new RadioButton { Name = "PackBex", Text = "BEX:T (BattleTech Extended: Tactics)", AutoSize = true };
+        readonly RadioButton _packHr = new RadioButton { Name = "PackHyadesRim", Text = "Hyades Rim", AutoSize = true };
         readonly RadioButton _packOther = new RadioButton { Name = "PackOther", Text = "Another ModTek v4 pack", AutoSize = true };
         readonly TextBox _packFolder = new TextBox { Name = "PackFolder", AccessibleName = "Mod pack folder", Dock = DockStyle.Fill };
         readonly Button _packBrowse = new UcuButton(UcuButton.Look.Compact) { Name = "PackBrowse", Text = "Browse..." };
@@ -279,7 +281,7 @@ namespace ReleaseGate
                 Text = "Uses a mod pack you already installed for retail BATTLETECH. The pack's own install stays as it is; UCU links or copies its Mods folder.",
             };
             Span(t, intro);
-            Span(t, Row(_packBta, _packRt, _packOther));
+            Span(t, Row(_packBta, _packRt, _packBex, _packHr, _packOther));
             t.Controls.Add(_packFolder);
             t.Controls.Add(_packBrowse);
             Span(t, _packNote);
@@ -293,14 +295,14 @@ namespace ReleaseGate
             Span(t, _packState);
 
             _modsOn.CheckedChanged += (s, e) => ModsToggled();
-            foreach (RadioButton r in new[] { _packBta, _packRt, _packOther }) r.CheckedChanged += (s, e) => { if (((RadioButton)s).Checked) PackChanged(); };
+            foreach (RadioButton r in new[] { _packBta, _packRt, _packBex, _packHr, _packOther }) r.CheckedChanged += (s, e) => { if (((RadioButton)s).Checked) PackChanged(); };
             _packFolder.TextChanged += (s, e) => PackChanged();
             _packJunction.CheckedChanged += (s, e) => PackChanged();
             _packSaves.CheckedChanged += (s, e) => PackChanged();
             _combatSaves.CheckedChanged += (s, e) => CombatSavesToggled();
             _packBrowse.Click += (s, e) =>
             {
-                using (var d = new FolderBrowserDialog { Description = "Choose the mod pack's install: the folder that holds Mods\\ModTek", ShowNewFolderButton = false })
+                using (var d = new FolderBrowserDialog { Description = "Choose the mod pack's install (the folder that holds Mods\\ModTek), or its Mods folder", ShowNewFolderButton = false })
                 {
                     if (Directory.Exists(_packFolder.Text)) d.SelectedPath = _packFolder.Text;
                     if (d.ShowDialog(this) == DialogResult.OK) _packFolder.Text = d.SelectedPath;
@@ -312,7 +314,7 @@ namespace ReleaseGate
 
         string PackKind()
         {
-            return _packRt.Checked ? Launcher.PackRogueTech : _packOther.Checked ? Launcher.PackOther : Launcher.PackBta;
+            return _packRt.Checked ? Launcher.PackRogueTech : _packBex.Checked ? Launcher.PackBex : _packHr.Checked ? Launcher.PackHyades : _packOther.Checked ? Launcher.PackOther : Launcher.PackBta;
         }
 
         void PackChanged()
@@ -330,11 +332,12 @@ namespace ReleaseGate
         {
             string folder = _packFolder.Text.Trim().Trim('"');
             string name = Launcher.PackName(PackKind());
-            string rt = PackKind() == Launcher.PackRogueTech ? " RogueTech hasn't been tested on UCU yet; report what you find." : "";
+            string rt = PackKind() == Launcher.PackRogueTech || PackKind() == Launcher.PackBex ? " " + name + " hasn't been tested on UCU yet; report what you find." : "";
             if (folder.Length == 0)
-                Show(_packNote, (PackKind() == Launcher.PackBta ? "Leave empty to search your Steam libraries for BTA, or choose its folder." : "Choose the " + name + " install: the folder that holds Mods\\ModTek.") + rt, SystemColors.ControlText);
+                Show(_packNote, (PackKind() == Launcher.PackBta ? "Leave empty to search your Steam libraries for BTA, or choose its folder." : "Choose the " + name + " install (the folder that holds Mods\\ModTek), or its Mods folder" +
+                    (PackKind() == Launcher.PackHyades ? ", such as BATTLETECH\\Mods or BATTLETECH\\Mods_HyadesRim." : ".")) + rt, SystemColors.ControlText);
             else if (!Launcher.IsModTekPack(folder))
-                Show(_packNote, "No ModTek v4 there (Mods\\ModTek\\lib\\ModTek.Preloader.dll is missing). Choose the folder the pack's installer filled." + rt, Bad);
+                Show(_packNote, "No ModTek v4 there (neither Mods\\ModTek\\lib\\ModTek.Preloader.dll nor ModTek\\lib\\ModTek.Preloader.dll). Choose the folder the pack's installer filled, or its Mods folder." + rt, Bad);
             else
             {
                 string guess = Launcher.GuessPack(folder);
@@ -511,8 +514,10 @@ namespace ReleaseGate
             _closeOnPlay.Checked = _settings.CloseOnPlay;
             _checkOnStart.Checked = _settings.CheckOnStart;
             _packRt.Checked = _settings.PackKind == Launcher.PackRogueTech;
+            _packBex.Checked = _settings.PackKind == Launcher.PackBex;
+            _packHr.Checked = _settings.PackKind == Launcher.PackHyades;
             _packOther.Checked = _settings.PackKind == Launcher.PackOther;
-            _packBta.Checked = !_packRt.Checked && !_packOther.Checked;
+            _packBta.Checked = !_packRt.Checked && !_packBex.Checked && !_packHr.Checked && !_packOther.Checked;
             _packFolder.Text = _settings.PackFolder;
             _packCopy.Checked = _settings.PackCopy;
             _packJunction.Checked = !_settings.PackCopy;

@@ -103,8 +103,8 @@ namespace ReleaseGate
         public const string FileName = "BattleTech UCU Launcher.exe";
         public const string LinkMarker = ".bta-link.json";
         public const string LinkScript = "Link-BTA.ps1";
-        public const string PackBta = "bta", PackRogueTech = "roguetech", PackOther = "other";
-        public static readonly string[] PackKinds = { PackBta, PackRogueTech, PackOther };
+        public const string PackBta = "bta", PackRogueTech = "roguetech", PackBex = "bex", PackHyades = "hyadesrim", PackOther = "other";
+        public static readonly string[] PackKinds = { PackBta, PackRogueTech, PackBex, PackHyades, PackOther };
         public const string IssuesPage = "https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/new/choose";
         public const string ReleasesPage = "https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/releases";
 
@@ -221,16 +221,31 @@ namespace ReleaseGate
 
         // ---- mod packs ----
 
-        /// <summary>A ModTek v4 pack: what Link-BTA.ps1 accepts (Is-Bta).</summary>
+        /// <summary>
+        /// The pack's mods folder: folder\Mods for a pack install, or the folder itself when it is a Mods folder (a pack kept
+        /// beside retail's own, such as BATTLETECH\Mods_HyadesRim). Null when neither holds ModTek v4. What Link-BTA.ps1
+        /// accepts (Pack-Mods).
+        /// </summary>
+        public static string PackMods(string folder)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(folder)) return null;
+                foreach (string m in new[] { Path.Combine(folder, "Mods"), folder })
+                    if (File.Exists(Path.Combine(m, "ModTek", "lib", "ModTek.Preloader.dll"))) return m;
+            }
+            catch (Exception e) when (e is ArgumentException || e is NotSupportedException || e is IOException) { }
+            return null;
+        }
+
         public static bool IsModTekPack(string folder)
         {
-            try { return !string.IsNullOrEmpty(folder) && File.Exists(Path.Combine(folder, "Mods", "ModTek", "lib", "ModTek.Preloader.dll")); }
-            catch (Exception e) when (e is ArgumentException || e is NotSupportedException || e is IOException) { return false; }
+            return PackMods(folder) != null;
         }
 
         public static string PackName(string kind)
         {
-            return kind == PackRogueTech ? "RogueTech" : kind == PackOther ? "ModTek pack" : "BTA";
+            return kind == PackRogueTech ? "RogueTech" : kind == PackBex ? "BEX:T" : kind == PackHyades ? "Hyades Rim" : kind == PackOther ? "ModTek pack" : "BTA";
         }
 
         /// <summary>A guess at which pack a folder holds, from its name and its Mods folders; for display only.</summary>
@@ -239,9 +254,14 @@ namespace ReleaseGate
             try
             {
                 var names = new List<string> { Path.GetFileName((folder ?? "").TrimEnd('\\')) };
-                string mods = Path.Combine(folder, "Mods");
+                string mods = PackMods(folder) ?? Path.Combine(folder, "Mods");
                 if (Directory.Exists(mods)) names.AddRange(Directory.GetDirectories(mods).Select(Path.GetFileName));
-                // BTA first: it ships a "RogueTechPerfFix" mod, so a RogueTech-first test called every BTA install RogueTech (issue 25).
+                // Hyades Rim's own mod folder is "HyadesRim"; no BTA or BEX:T install has one (checked 2026-11-23).
+                if (names.Any(n => string.Equals(n, "HyadesRim", StringComparison.OrdinalIgnoreCase))) return PackHyades;
+                // BEX:T before BTA: it ships "BTAdditionalDificultyOptions", which the BTA test below matches. BTA ships no
+                // BT_Extended* or *BEX* folder (a 116-mod BTA install, checked 2026-11-22).
+                if (names.Any(n => n.StartsWith("BT_Extended", StringComparison.OrdinalIgnoreCase) || n.IndexOf("BEX", StringComparison.Ordinal) >= 0)) return PackBex;
+                // BTA before RogueTech: it ships a "RogueTechPerfFix" mod, so a RogueTech-first test called every BTA install RogueTech (issue 25).
                 if (names.Any(n => n.IndexOf("BT Advanced", StringComparison.OrdinalIgnoreCase) >= 0 || n.IndexOf("BTA", StringComparison.Ordinal) >= 0 || n.IndexOf("BattleTech Advanced", StringComparison.OrdinalIgnoreCase) >= 0)) return PackBta;
                 if (names.Any(n => n.IndexOf("RogueTech", StringComparison.OrdinalIgnoreCase) >= 0)) return PackRogueTech;
             }

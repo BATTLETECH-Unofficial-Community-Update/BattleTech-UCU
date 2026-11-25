@@ -17,7 +17,8 @@ param(
     [string]$Bin,
     [string]$Emblem = 'BattleTech_Data/StreamingAssets/emblems/player/envTxrHrld_001.dds',
     [string]$Same = 'BattleTech_Data/StreamingAssets/data/constants/CombatGameConstants.json',
-    [string]$Bank = 'BattleTech_Data/StreamingAssets/Audio/GeneratedSoundBanks/Windows/English(US)/dialog_m010.bnk'
+    [string]$Bank = 'BattleTech_Data/StreamingAssets/Audio/GeneratedSoundBanks/Windows/English(US)/dialog_m010.bnk',
+    [string]$Settings = 'BattleTech_Data/StreamingAssets/data/debug/settings.json'
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '..\..\UcuPaths.ps1')
@@ -39,6 +40,7 @@ Put "$Steam\BattleTech.exe" 'BattleTech.exe'
 Put (Join-Path $Steam $Same) $Same
 Put (Join-Path $Steam $Emblem) $Emblem
 Put (Join-Path $Steam $Bank) $Bank
+Put (Join-Path $Steam $Settings) $Settings
 $b = New-Object byte[] (1MB); (New-Object Random 7).NextBytes($b)
 [IO.File]::WriteAllBytes("$Root\player\own.bin", $b)
 if ((Sha (Join-Path $Steam $Same)) -ne (Sha (Join-Path $Gog $Same))) { throw "$Same differs between the stores: pick another" }
@@ -114,6 +116,35 @@ Check "repair kept another game's marker" (Test-Path $other)
 if (SameDrive $Root $Gog) { Check 'repair kept the sound bank a hard link to GOG' (LinkedTo (Join-Path "$Root\install-gog" $Bank) (Join-Path $Gog $Bank)) }
 Check "repair put back $($dlc[0].Name)" ((Test-Path "$Root\install-gog\$($dlc[0].Name)") -and (Sha "$Root\install-gog\$($dlc[0].Name)") -eq (Sha $dlc[0].FullName))
 Remove-Item $other
+# GitHub issue 40: a GOG install whose settings.json the player edited (BEX's disableSplashScreens and disableIntroMovie).
+# The stand-in holds hard links to GOG's files, but the edited files are new files, so GOG's own are never written.
+# settings.json is packed, never read from retail, so the install passes; an edited retail data file still fails its
+# check, and the DLC markers are copied all the same.
+$ed = "$Root\gog-edited"
+$gl = @(Get-ChildItem $Gog -File | ForEach-Object Name) + @('BattleTech_Data/globalgamemanagers.assets', 'BattleTech_Data/resources.assets',
+    'BattleTech_Data/resources.assets.resS', 'BattleTech_Data/sharedassets0.assets', 'BattleTech_Data/level10', 'BattleTech_Data/level10.resS', $Same, $Emblem, $Bank)
+foreach ($rel in $gl) {
+    $to = Join-Path $ed $rel; New-Item -ItemType Directory -Force (Split-Path $to) | Out-Null
+    New-Item -ItemType HardLink -Path $to -Target (Join-Path $Gog $rel) | Out-Null
+}
+$edited = (Get-Content -Raw (Join-Path $Gog $Settings)) -replace '"disableSplashScreens"\s*:\s*false', '"disableSplashScreens": true' -replace '"disableIntroMovie"\s*:\s*false', '"disableIntroMovie": true'
+New-Item -ItemType Directory -Force (Split-Path (Join-Path $ed $Settings)) | Out-Null
+[IO.File]::WriteAllText((Join-Path $ed $Settings), $edited)
+Check 'stand-in settings.json is edited' ((Sha (Join-Path $ed $Settings)) -ne (Sha (Join-Path $Gog $Settings)))
+foreach ($m in 'ucu-manifest.tsv', 'ucu-manifest-gog.tsv') {
+    $row = Get-Content "$Root\pkg\$m" | Where-Object { $_ -like "$Settings`t*" }
+    Check "$m packs settings.json (origin $(($row -split "`t")[3]))" ($row -and ($row -split "`t")[3] -ne 'retail')
+}
+$d = "$Root\install-gog-edited"
+& "$Root\pkg\BattleTechUCUSetup.exe" --retail $ed --dest $d --no-mods --steam-root "$Root\no-steam" --backup-root "$Root\no-steam" 2>&1 | ForEach-Object { "  setup: $_" }
+Check "edited-settings gog install exit 0 (got $LASTEXITCODE)" ($LASTEXITCODE -eq 0)
+Check 'edited-settings install has the player''s settings.json' ((Test-Path (Join-Path $d $Settings)) -and (Sha (Join-Path $d $Settings)) -eq (Sha (Join-Path "$Root\player" $Settings)))
+foreach ($m in $dlc) { Check "edited-settings marker $($m.Name)" (Test-Path "$d\$($m.Name)") }
+$d = "$Root\install-gog-damaged"
+Remove-Item (Join-Path $ed $Same); [IO.File]::WriteAllText((Join-Path $ed $Same), '{}')
+& "$Root\pkg\BattleTechUCUSetup.exe" --retail $ed --dest $d --no-mods --steam-root "$Root\no-steam" --backup-root "$Root\no-steam" 2>&1 | ForEach-Object { "  setup: $_" }
+Check "edited-data gog install reports the failed check (got $LASTEXITCODE)" ($LASTEXITCODE -ne 0)
+foreach ($m in $dlc) { Check "edited-data install still has marker $($m.Name)" (Test-Path "$d\$($m.Name)") }
 # Control: a damaged GOG install is caught by Verify install.
 [IO.File]::AppendAllText("$Root\install-gog\Galaxy64.dll", 'x')
 & "$Root\tools\BattleTechUCUSetup.exe" --verify "$Root\install-gog" | Out-Null

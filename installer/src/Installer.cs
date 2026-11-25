@@ -842,6 +842,18 @@ namespace ReleaseGate
                     text = "Install failed: " + a.Flatten().InnerExceptions[0].Message;
                     return InstallResult.Failed;
                 }
+                // The DLC markers come from the GOG install, not from the files checked above, so one failed file doesn't
+                // leave the DLC unowned (GitHub issue 40).
+                int markers = 0, markersRemoved = 0;
+                if (c.Store == Gate.Gog)
+                {
+                    try { markers = SyncGogDlcMarkers(retail, dest, out markersRemoved); }
+                    catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+                    {
+                        text = "Install failed: your GOG DLC files (goggame-*.info) couldn't be copied: " + e.Message;
+                        return InstallResult.Failed;
+                    }
+                }
                 if (bad.Count > 0)
                 {
                     text = string.Format("{0} file(s) failed their check, first {1}. {2} or download this package again.", bad.Count, bad[0],
@@ -859,16 +871,6 @@ namespace ReleaseGate
                     if (File.Exists(full)) { File.Delete(full); removed++; }
                     string[] gone;
                     now.TryRemove(path, out gone);
-                }
-                int markers = 0, markersRemoved = 0;
-                if (c.Store == Gate.Gog)
-                {
-                    try { markers = SyncGogDlcMarkers(retail, dest, out markersRemoved); }
-                    catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
-                    {
-                        text = "Install failed: your GOG DLC files (goggame-*.info) couldn't be copied: " + e.Message;
-                        return InstallResult.Failed;
-                    }
                 }
                 string downloads = Path.Combine(dest, DownloadName);
                 if (Directory.Exists(downloads))

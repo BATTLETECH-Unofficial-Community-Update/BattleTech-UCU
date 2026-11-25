@@ -4,7 +4,8 @@ Mod source: [CustomActivatableEquipment](https://github.com/BattletechModders/Cu
 
 Code: [`CustomActivatableEquipmentAuraLoadCompat.cs`](../../tools/mod-bootstrap/CustomActivatableEquipmentAuraLoadCompat.cs),
 [`CustomActivatableEquipmentCoopToggle.cs`](../../tools/mod-bootstrap/CustomActivatableEquipmentCoopToggle.cs),
-[`CustomActivatableEquipmentRepairCoopSync.cs`](../../tools/mod-bootstrap/CustomActivatableEquipmentRepairCoopSync.cs).
+[`CustomActivatableEquipmentCoopCharges.cs`](../../tools/mod-bootstrap/CustomActivatableEquipmentCoopCharges.cs),
+[`LoadSteps.cs`](../../tools/mod-bootstrap/LoadSteps.cs) (the `cae-coop` row).
 Kind: combat saves, co-op.
 
 **What broke.** CustomActivatableEquipment remembers which aura effects a unit holds in
@@ -34,7 +35,17 @@ unit, the host for an AI unit) with the roll's result and `UnityEngine.Random.st
 **Co-op: repair state across a resync.** `RepairHelper.DamagedStructureLocationsThisTurn` gathers the locations a unit was
 damaged in since its last commit, and `CommitCAEDamageData` reads it at `OnNewRound` to fire repair components. A guest's
 reload empties it and replaces the actor objects it is keyed by, so only the host repaired at the next round.
-`CustomActivatableEquipmentRepairCoopSync` sends the host's sets to a peer that has just loaded a snapshot. It carries them
+The `cae-coop` row of `LoadSteps` sends the host's sets to a peer that has just loaded a snapshot. It carries them
 instead of rebuilding them from the saved `<location>_damageRound` stats, which hold a different location and a different round.
 
+**Co-op: reading a component's charges.** `ActivatableComponent.isOutOfCharges` and `getChargesCount` add the component stat
+`CAEChargesCount`, with the def's `ChargesCount`, when it is missing. The combat HUD calls them for the unit the local player has
+selected, so a peer got the stat by looking at a unit and the other peers did not, and the MECHS compare, which reads every
+component stat, resynced the guest (a Coolant Pod on a JagerMech). `CustomActivatableEquipmentCoopCharges` replaces the one
+`AddStatistic` call in each read, in a co-op combat only, so both reads return the same value without adding the stat. The stat
+appears when a charge is spent (`setChargesCount`, reached through the toggle every peer replays). It names no unit, so units
+present at start, late spawns and units rebuilt by a resync or a reload are covered alike. Single player keeps the mod's own add.
+It logs `cae-charges-coop|installed` and `withheld` rows.
+
 **Upstream:** rebuild `affectedAurasEffects` from the unit's live effects when a body is created on a load.
+For co-op, a charge read could return the def's count without adding the stat.

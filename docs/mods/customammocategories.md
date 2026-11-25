@@ -6,10 +6,10 @@ Code: [`CustomAmmoCategoriesSaveCompat.cs`](../../tools/mod-bootstrap/CustomAmmo
 [`CustomAmmoCategoriesCoopBraceModes.cs`](../../tools/mod-bootstrap/CustomAmmoCategoriesCoopBraceModes.cs),
 [`CustomAmmoCategoriesLoadModes.cs`](../../tools/mod-bootstrap/CustomAmmoCategoriesLoadModes.cs),
 [`CustomAmmoCategoriesCoopModeSync.cs`](../../tools/mod-bootstrap/CustomAmmoCategoriesCoopModeSync.cs),
-[`CustomAmmoCategoriesCoopImpact.cs`](../../tools/mod-bootstrap/CustomAmmoCategoriesCoopImpact.cs),
+[`CoopRngSweepDeterminism.cs`](../../tools/mod-bootstrap/CoopRngSweepDeterminism.cs),
 [`CustomAmmoCategoriesCoopAmsGeometry.cs`](../../tools/mod-bootstrap/CustomAmmoCategoriesCoopAmsGeometry.cs),
 [`CustomAmmoCategoriesCoopArtillerySync.cs`](../../tools/mod-bootstrap/CustomAmmoCategoriesCoopArtillerySync.cs),
-[`CustomAmmoCategoriesCoopJamQueue.cs`](../../tools/mod-bootstrap/CustomAmmoCategoriesCoopJamQueue.cs),
+[`LoadSteps.cs`](../../tools/mod-bootstrap/LoadSteps.cs) (the `cac-jamq` row),
 [`CacDeferredEffectCoopSync.cs`](../../tools/mod-bootstrap/CacDeferredEffectCoopSync.cs),
 [`CacDynamicMapCoopSync.cs`](../../tools/mod-bootstrap/CacDynamicMapCoopSync.cs). Kind: combat saves, co-op;
 the combat-save part fails on the 2018 game too.
@@ -54,10 +54,12 @@ host's full state after a load. Patch 176 applies a click at an order point both
 indirect fire it places each missile with `RandomOnSphere`, which draws the global `UnityEngine.Random.onUnitSphere`, and
 that generator is never in step between co-op peers, so the same volley hit different units and locations on each peer.
 UCU's own host-authoritative stray shots sit inside the retail code CustomAmmoCategories skips, so they never run with it
-loaded. [`CustomAmmoCategoriesCoopImpact.cs`](../../tools/mod-bootstrap/CustomAmmoCategoriesCoopImpact.cs), only with
+loaded. [`CoopRngSweepDeterminism.cs`](../../tools/mod-bootstrap/CoopRngSweepDeterminism.cs), only with
 CustomAmmoCategories loaded and only in a co-op combat, seeds `UnityEngine.Random` around the game's private
-`AttackSequence.GenerateHitInfo` from the contract GUID, the sequence id, the group index and the weapon index, and puts the
-peer's own state back. Direct fire's `GetMissPositionDirect` may still raycast each peer's own scene, and CustomAmmoCategories'
+`AttackSequence.GenerateHitInfo` from the contract GUID, the sequence id, the group index and the weapon index, and around
+`GenerateToHitInfo` (CustomAmmoCategories' stray, AMS interception and variance rolls) from the contract GUID and the sequence
+id, and puts the peer's own state back. Its jam, unjam, mine, fire and deferred-effect rolls are rows of the sweep's
+declaration table. Direct fire's `GetMissPositionDirect` may still raycast each peer's own scene, and CustomAmmoCategories'
 random draws at impact time outside `GenerateHitInfo` aren't seeded.
 
 **Co-op: AMS interception geometry.** CustomAmmoCategories samples each missile's trajectory spline every 10 m and fires
@@ -70,7 +72,7 @@ empties them on a guest's reload while the host never reloads. Each adapter has 
 just loaded a snapshot, through `ModStateCarry`:
 - artillery mode, each artillery weapon's target point and terrain hit positions, with the `irbtmu_immobile_unit` stat
   (`CustomAmmoCategoriesCoopArtillerySync`);
-- the jam, AMS-jam and ammo-explosion queues (`CustomAmmoCategoriesCoopJamQueue`). The AMS queue is the only thing that resets
+- the jam, AMS-jam and ammo-explosion queues (the `cac-jamq` row of `LoadSteps`). The AMS queue is the only thing that resets
   `CAC-AMShootsCount` at the next round, so a guest without it kept an AMS's shots and could not fire it;
 - pending deferred effects such as artillery shells (`CacDeferredEffectCoopSync`);
 - minefields, temporary design masks and fires (`CacDynamicMapCoopSync`).

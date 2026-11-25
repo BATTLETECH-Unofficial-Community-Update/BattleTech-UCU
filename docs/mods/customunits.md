@@ -4,7 +4,9 @@ Mod source: [CustomUnits](https://github.com/BattletechModders/CustomAmmoCategor
 
 Code: [`CustomUnitsSaveCompat.cs`](../../tools/mod-bootstrap/CustomUnitsSaveCompat.cs),
 [`CustomUnitsCoopContract.cs`](../../tools/mod-bootstrap/CustomUnitsCoopContract.cs),
-[`CustomUnitsCoopCompare.cs`](../../tools/mod-bootstrap/CustomUnitsCoopCompare.cs). Kind: combat saves, co-op.
+[`CustomUnitsCoopCompare.cs`](../../tools/mod-bootstrap/CustomUnitsCoopCompare.cs),
+[`CustomUnitsCoopFiringArc.cs`](../../tools/mod-bootstrap/CustomUnitsCoopFiringArc.cs),
+[`CustomUnitsCoopMoveStat.cs`](../../tools/mod-bootstrap/CustomUnitsCoopMoveStat.cs). Kind: combat saves, co-op.
 Depends on a game-code change: saving mod subclasses with the nearest game save contract (see the [index](README.md)).
 
 **What broke.** CustomUnits replaces every mech with its own classes (`CustomMech`, `TrooperSquad`, `QuadMech`,
@@ -40,6 +42,21 @@ that the guest's had not, the two differed and the check started a resync. UCU's
 (a name list in the game code, empty in UCU; the adapter adds `CUSeenByPlayer` only when CustomUnits is loaded). The stat
 and what CustomUnits does with it are unchanged.
 
+CustomUnits also gives every vehicle a firing-arc stat, `CUFiringArc`. It lists each vehicle chassis file a second time
+as a mech-shaped chassis (a "fake vehicle") and reads both copies into one record per chassis id. Only the vehicle copy
+sets the arc (360 with a turret, 90 without, or the file's own `FiringArc`), and each copy replaces the record, so a
+fake vehicle's stat was that value or 0 depending on which copy the game loaded last. The two players could differ,
+and the co-op checks (which hash every stat) caught it. In a co-op combat only, UCU now reads the arc CustomUnits
+intends from the vehicle file as it is loaded, and sets a fake vehicle's stat to it when its own differs, on both
+players' PCs. Single player is untouched.
+
+CustomUnits records each move's cost in a stat, `CULastMoveDistance`, which its move clamp reads. It reads the cost
+from the unit's pathing when the move sequence starts, while the other player's copy gets the cost read when the move
+order was built. For one AI unit the pathing changed between the two reads, so the stat differed and the co-op checks
+caught it. In a co-op combat only, the player who moved the unit now sends the value it holds after the move starts,
+and the other player sets that same value before the next check. Single player is untouched.
+
 **Upstream:** for combat saves, see points 1 and 2 of [Combat saves: notes for mod authors](../mod-authors-combat-saves.md). For co-op, set `CurrentContract`
 from the contract being generated instead of from one call path, and keep per-player state out of `StatCollection`
-(the co-op checks compare every stat).
+(the co-op checks compare every stat). Give a fake vehicle's chassis its own record id, or set `FiringArc` in both
+parses.

@@ -163,19 +163,15 @@ namespace BattleTechPort
                 RegisterCoop("CustomUnitsCoopMoveStat", () => CustomUnitsCoopMoveStat.Register(Log));                // CustomUnits (needs UCU patch 145)
                 RegisterCoop("CustomUnitsCoopContract", () => CustomUnitsCoopContract.Register(Log));                // CustomUnits
                 RegisterCoop("CustomUnitsCoopCompare", () => CustomUnitsCoopCompare.Register(Log));                  // CustomUnits
-                RegisterCoop("MissionControlCoopDeterminism", () => MissionControlCoopDeterminism.Register(Log));    // MissionControl
-                RegisterCoop("CoopSpawnDeterminism", () => CoopSpawnDeterminism.Register(Log));                      // any mod that hooks the spawn methods
-                RegisterCoop("FieldRepairsCoopDeterminism", () => FieldRepairsCoopDeterminism.Register(Log));        // FieldRepairs
+                RegisterCoop("CustomUnitsCoopFiringArc", () => CustomUnitsCoopFiringArc.Register(Log));              // CustomUnits (fake-vehicle CUFiringArc, parse-order race)
+                RegisterCoop("MissionControlCoopDeterminism", () => MissionControlCoopDeterminism.Register(Log));    // MissionControl: drop-data sync only (its random rolls are CoopRngSweepDeterminism's)
+                RegisterCoop("FullXotlTablesCoopDeterminism", () => FullXotlTablesCoopDeterminism.Register(Log));    // FullXotlTables (BEX:T unit tables): opposing unit picks seeded per spawner (G6)
                 RegisterCoop("StrategicOperationsCoopDeterminism", () => StrategicOperationsCoopDeterminism.Register(Log));   // StrategicOperations
-                RegisterCoop("SpamCoopDeterminism", () => SpamCoopDeterminism.Register(Log));                        // SoldiersPiratesAssassinsMercs
-                RegisterCoop("IRTweaksCoopDeterminism", () => IRTweaksCoopDeterminism.Register(Log));               // IRTweaks (fault M)
                 RegisterCoop("CoopActivationDecisionGate", () => CoopActivationDecisionGate.Register(Log));          // any mod that prefixes OnTurnActorActivateComplete (needs UCU patch 169)
                 RegisterCoop("CustomAmmoCategoriesCoopBraceModes", () => CustomAmmoCategoriesCoopBraceModes.Register(Log));   // CustomAmmoCategories
                 RegisterCoop("CustomAmmoCategoriesCoopModeSync", () => CustomAmmoCategoriesCoopModeSync.Register(Log));   // CustomAmmoCategories (needs UCU patch 166)
                 RegisterCoop("PracticeMakesPerfectCoopStratCom", () => PracticeMakesPerfectCoopStratCom.Register(Log));   // PracticeMakesPerfect
-                RegisterCoop("TisButAScratchCoopDeterminism", () => TisButAScratchCoopDeterminism.Register(Log));    // TisButAScratch (fault V1)
-                RegisterCoop("PanicSystemCoopDeterminism", () => PanicSystemCoopDeterminism.Register(Log));          // PanicSystem (fault W)
-                RegisterCoop("PanicSystemTrackerCoopSync", () => PanicSystemTrackerCoopSync.Register(Log));          // PanicSystem (fault W2: tracker sent with a co-op snapshot load; needs UCU patch 166)
+                RegisterCoop("ExtendedCEPathingCoopSync", () => ExtendedCEPathingCoopSync.Register(Log));            // Extended_CE (BEX:T run rules read the planning peer's path; needs UCU patch 166)
                 if (CombatSavesRuntimeGate.IsEnabled())
                 {
                     RegisterSaveAdapters(true);
@@ -200,24 +196,24 @@ namespace BattleTechPort
                 ShaderBundleCompat.Register(Log);
                 ImguiTooltipCompat.Register(Log);
                 ImguiTextColorCompat.Register(Log);
-                RegisterCoop("CustomAmmoCategoriesCoopImpact", () => CustomAmmoCategoriesCoopImpact.Register(Log));   // CustomAmmoCategories (fault Y)
-                RegisterCoop("CBTBehaviorsEnhancedCoopDeterminism", () => CBTBehaviorsEnhancedCoopDeterminism.Register(Log));   // CBTBehaviorsEnhanced (W-L7 compare 218)
+                UnityInOverloadLookupCompat.Register(Log);   // Unity 6 `in` twins of UnityEngine methods: a by-name AccessTools lookup gets retail's method (gh issue 42, BTX_ExpansionPack)
+                AbilifierBarracksPanelCompat.Register(Log);   // Abilifier: Barracks pip clicks reach the panel on screen (gh issue 36)
                 RegisterCoop("AttackImprovementModCoopCalledShot", () => AttackImprovementModCoopCalledShot.Register(Log));   // AttackImprovementMod + CustomUnits (W-L7 volley)
-                RegisterCoop("ComponentOrderLoadCompat", () => ComponentOrderLoadCompat.Register(Log));   // any co-op combat-save load (W-L7 compares 106, 319)
                 RegisterCoop("PilotStatHistoryLoadCompat", () => PilotStatHistoryLoadCompat.Register(Log));   // any co-op combat-save load: pilot stat history (CBTBE-5 compare 217)
-                RegisterCoop("CoopActorTransientStateSync", () => CoopActorTransientStateSync.Register(Log));   // any co-op snapshot load: temp heat, knockdown flag (CBTBE-6b compares 104, 206; needs UCU patch 166)
+                RegisterCoop("LoadSteps", () => LoadSteps.Register(Log));   // the load-step registry: phase 1 after hydrate (component order), phase 2 after _Init on a load (effect caches), phase 3 guest snapshot apply (generic carries of SO ModState, CAE repair sets, CAC jam queues, PanicSystem tracker, actor fields) and the co-op census (L1, L2; needs UCU patch 166)
+                RegisterCoop("CoopActorTransientStateSync", () => CoopActorTransientStateSync.Register(Log));   // any co-op snapshot load: the actor occupiedDesignMask (the other actor fields are LoadSteps carries; needs UCU patch 166)
                 RegisterCoop("CustomAmmoCategoriesCoopArtillerySync", () => CustomAmmoCategoriesCoopArtillerySync.Register(Log));   // CustomAmmoCategories artillery mode, terrain points (CBTBE-8 compares 10, 223, 335; needs UCU patch 166)
-                RegisterCoop("CoopRngSweepDeterminism", () => CoopRngSweepDeterminism.Register(Log));   // ConcreteJungle, SPAM, CollateralDamage, TBAS, Abilifier, CBTBE, CAE, StrategicOperations, MissionControl, MonsterMashup, CustomUnits (issue 24 RNG sweep)
+                RegisterCoop("CoopRngSweepDeterminism", () => CoopRngSweepDeterminism.Register(Log));   // generic co-op RNG for every non-UCU mod (R1 shared points, R2 draw/Guid/new Random redirect, R3 declarations)
                 RegisterCoop("CBTBehaviorsEnhancedCoopStartupDecision", () => CBTBehaviorsEnhancedCoopStartupDecision.Register(Log));   // CBTBehaviorsEnhanced: AI startup-check outcomes carried to the guest (D-20261122-6)
                 RegisterCoop("CustomActivatableEquipmentCoopToggle", () => CustomActivatableEquipmentCoopToggle.Register(Log));   // CustomActivatableEquipment: HUD toggles sent at once (D-20261122-6; needs UCU patches 166, 176)
+                RegisterCoop("CustomActivatableEquipmentCoopCharges", () => CustomActivatableEquipmentCoopCharges.Register(Log));   // CustomActivatableEquipment: a co-op charge read adds no stat (logic-cae-charges-1)
                 RegisterCoop("StrategicOperationsCoopSwarmDecision", () => StrategicOperationsCoopSwarmDecision.Register(Log));   // StrategicOperations: AI dismount / deswarm, swarm melee location (D-20261122-6)
+                RegisterCoop("StrategicOperationsCoopAiCommand", () => StrategicOperationsCoopAiCommand.Register(Log));   // StrategicOperations: AI command abilities (BADrop and siblings) activated on the host, replayed on guests (so-ai-badrop-coop)
+                RegisterCoop("StrategicOperationsCoopDropPod", () => StrategicOperationsCoopDropPod.Register(Log));   // StrategicOperations: AI drop-pod landing and deploy evasion carried from the host, dropped unit held out of the MECHS compare until then (so-ai-badrop-coop)
                 RegisterCoop("CacDynamicMapCoopSync", () => CacDynamicMapCoopSync.Register(Log));   // CustomAmmoCategories minefields, temp design masks (snapshot sweep; needs UCU patch 166)
                 RegisterCoop("CacDeferredEffectCoopSync", () => CacDeferredEffectCoopSync.Register(Log));   // CustomAmmoCategories pending deferred effects (snapshot sweep; needs UCU patch 166)
                 RegisterCoop("StrategicOperationsCoopCommandSync", () => StrategicOperationsCoopCommandSync.Register(Log));   // StrategicOperations command abilities; host drops strafes in flight, deferred spawns and refunds their use and cost; ahead of so-coop so its rollback is in what so-coop sends (gap review; needs UCU patch 166)
-                RegisterCoop("StrategicOperationsCoopStateSync", () => StrategicOperationsCoopStateSync.Register(Log));   // StrategicOperations ModState (snapshot sweep; needs UCU patch 166)
-                RegisterCoop("CustomActivatableEquipmentRepairCoopSync", () => CustomActivatableEquipmentRepairCoopSync.Register(Log));   // CAE RepairHelper damaged locations (snapshot sweep; needs UCU patch 166)
                 RegisterCoop("MonsterMashupCoopLinkSync", () => MonsterMashupCoopLinkSync.Register(Log));   // MonsterMashup linked actors, support spawns, weapon arcs, CustomUnits links (gap review; needs UCU patch 166)
-                RegisterCoop("CustomAmmoCategoriesCoopJamQueue", () => CustomAmmoCategoriesCoopJamQueue.Register(Log));   // CustomAmmoCategories jam and ammo-explosion queues sent with a co-op snapshot load (CBTBE-9 compare 264; needs UCU patch 166)
                 RegisterCoop("CustomAmmoCategoriesCoopAmsGeometry", () => CustomAmmoCategoriesCoopAmsGeometry.Register(Log));   // CustomAmmoCategories AMS trajectory points from the host (CBTBE-9 compare 163; needs UCU patch 014)
                 RewriteCoreModule(managed, Path.Combine(root, "Mods", ".port"));
                 RestoreJsonEvaluate(managed, Path.Combine(root, "Mods", ".port"));
@@ -569,6 +565,8 @@ namespace BattleTechPort
         // marker: the opt-in marker is present. Each adapter acts only while CombatSavesRuntimeGate.SaveDataEnabled() (the
         // marker, or a co-op combat running). IRTweaks changes its DisableCombatSaves setting only with the marker, and
         // MechEngineerSaveCompat (SaveGameStructure.Save, not on a co-op snapshot's path) is registered only with it.
+        // ExtendedCESaveCompat switches BEX:T's save button on only with the marker; its unit-state carry and load dedupe are on a
+        // co-op snapshot's path too (logic-bext-fixes finding S), so it is registered either way.
         static void RegisterSaveAdapters(bool marker)
         {
             saveAdaptersRegistered = true;
@@ -576,8 +574,9 @@ namespace BattleTechPort
             CustomUnitsSaveCompat.Register(Log);
             ActorHydrateDeferral.Register(Log);
             MissionControlSaveCompat.Register(Log);
-            EffectCacheLoadCompat.Register(Log);       // RogueTechPerfFixes, CustomStatisticEffects (issue 24 fault U)
             DesignMaskStickyLoadCompat.Register(Log);  // CustomStatisticEffects: design-mask sticky not applied again on a load (issue 24, CBTBE-3b)
+            MechAffinityLoadDedupe.Register(Log);      // MechAffinity: pilot effects not added again on a load (logic-bext-fixes finding S)
+            BEXTimelineLoadSkip.Register(Log);         // BEX Timeline: ammo/component conversions not rolled again on a load (logic-bext-fixes layer H)
             EncounterLoadDeferral.Register(Log);
             ExpandedInitiativeSaveCompat.Register(Log);
             CustomAmmoCategoriesSaveCompat.Register(Log);
@@ -585,6 +584,7 @@ namespace BattleTechPort
             CustomActivatableEquipmentAuraLoadCompat.Register(Log);   // CustomActivatableEquipment aura effects on a load (issue 24 fault W, C3)
             StartDialogueSaveCompat.Register(Log);
             if (marker) MechEngineerSaveCompat.Register(Log);
+            ExtendedCESaveCompat.Register(Log, marker);   // BEX:T (Extended_CE): save button with the marker; state carry and load dedupe always
         }
 
         // CombatSavesRuntimeGate.NoteCoopCombat(true), marker absent: the first co-op combat registers the adapters; a later

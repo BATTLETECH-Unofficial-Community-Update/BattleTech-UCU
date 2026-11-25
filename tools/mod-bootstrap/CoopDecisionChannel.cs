@@ -27,6 +27,7 @@ namespace BattleTechPort
         public readonly string Key, Tag;
         public bool Replaying { get; private set; }
         public Action<object> BeforeCapture;   // may add records for the invocation being sent
+        public Action<string, object> Ordered;   // the deciding peer: its own HUD record (kind, actor) reached its order point on every peer
         readonly Action<string> log;
         readonly Dictionary<string, Replay> replays = new Dictionary<string, Replay>(StringComparer.Ordinal);
         readonly List<string> queued = new List<string>();
@@ -167,7 +168,15 @@ namespace BattleTechPort
                 if (p.Length < 3 || !replays.TryGetValue(p[0], out Replay replay)) { Row("apply-failed|" + (p.Length > 0 ? p[0] : "?") + "|?|bad record " + record); continue; }
                 object actor = combat == null ? null : findActor.Invoke(combat, new object[] { p[1] });
                 if (actor == null) { Row("unmapped|" + p[0] + "|" + p[1]); continue; }
-                if (Authority(actor)) continue;   // this peer decided it (a HUD click's order point reaches the clicker too)
+                if (Authority(actor))   // this peer decided it (a HUD click's order point reaches the clicker too)
+                {
+                    if (ReferenceEquals(invocation, nowMarker) && Ordered != null)
+                    {
+                        try { Ordered(p[0], actor); }
+                        catch (Exception e) { log(Tag + "|ordered-failed|" + p[0] + "|" + e.Message); }
+                    }
+                    continue;
+                }
                 var fields = new string[p.Length - 3];
                 Array.Copy(p, 3, fields, 0, fields.Length);
                 object own = randomState.GetValue(null, null);

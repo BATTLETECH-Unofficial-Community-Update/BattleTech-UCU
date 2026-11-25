@@ -17,10 +17,13 @@ behind them and what a mod can do so it saves and loads correctly with no help.
 
 | Mod | Note | Why |
 |---|---|---|
+| BattleTech Extended: Tactics (BEX:T) | [bext.md](bext.md) | combat saves, co-op |
 | MonsterMashup | [monstermashup.md](monstermashup.md) | co-op |
 | [ModTek](https://github.com/BattletechModders/ModTek) | [modtek.md](modtek.md) | runtime and loader differences on Unity 6 |
+| [Abilifier](https://github.com/ajkroeg/Abilifier) | [abilifier.md](abilifier.md) | Barracks pip clicks miss the panel on screen |
 | AttackImprovementMod | [attackimprovementmod.md](attackimprovementmod.md) | co-op, with CustomUnits |
 | [BTDebug](https://github.com/CWolfs/BTDebug) | [btdebug.md](btdebug.md) | gizmo shaders not found, load never ends |
+| BTX_ExpansionPack (BEX:T submods) | [btx-expansionpack.md](btx-expansionpack.md) | Unity 6 added `in` overloads, so a by-name method lookup is ambiguous |
 | [CustomActivatableEquipment](https://github.com/BattletechModders/CustomActivatableEquipment) | [customactivatableequipment.md](customactivatableequipment.md) | combat saves, co-op |
 | CBTBehaviorsEnhanced | [cbtbehaviorsenhanced.md](cbtbehaviorsenhanced.md) | co-op |
 | [CustomAmmoCategories](https://github.com/BattletechModders/CustomAmmoCategories/tree/master/CustomAmmoCategories) | [customammocategories.md](customammocategories.md) | combat saves, co-op |
@@ -43,9 +46,9 @@ behind them and what a mod can do so it saves and loads correctly with no help.
 
 Some adapters aren't tied to one mod. [`ActorHydrateDeferral.cs`](../../tools/mod-bootstrap/ActorHydrateDeferral.cs)
 and [`EncounterLoadDeferral.cs`](../../tools/mod-bootstrap/EncounterLoadDeferral.cs) hold back mod postfixes that run
-too early on a save load. [`CoopSpawnDeterminism.cs`](../../tools/mod-bootstrap/CoopSpawnDeterminism.cs) seeds the
-random numbers drawn by mods that hook unit spawning in co-op. [`ComponentOrderLoadCompat.cs`](../../tools/mod-bootstrap/ComponentOrderLoadCompat.cs)
-puts a unit's component list back in loadout order after a co-op combat-save load (the game's load regroups it by type, and
+too early on a save load. [`CoopRngSweepDeterminism.cs`](../../tools/mod-bootstrap/CoopRngSweepDeterminism.cs) seeds the
+random numbers mods draw in co-op, including while a unit spawns. [`ComponentOrderLoadCompat.cs`](../../tools/mod-bootstrap/ComponentOrderLoadCompat.cs)
+(run by [`LoadSteps.cs`](../../tools/mod-bootstrap/LoadSteps.cs) after a unit hydrates) puts a unit's component list back in loadout order after a co-op combat-save load (the game's load regroups it by type, and
 the guest reloads on every resync while the host does not), so a critical-hit slot names the same component on both PCs. [`ModStateCensus.cs`](../../tools/mod-bootstrap/ModStateCensus.cs)
 is diagnostic only: it lists mod static fields at save and load and changes nothing.
 
@@ -112,14 +115,20 @@ Described here because their code isn't published:
   host does, and the rebuild is skipped when the history came with the snapshot (`StatCollection.CoopPilotHistoryCarried`).
   Single-player save bytes are unchanged.
 - In a co-op combat, mod static state that a guest's resync reload empties can be sent to it from the host.
-  [`ModStateCarry.cs`](../../tools/mod-bootstrap/ModStateCarry.cs) takes a mod's static fields, encodes them by their declared
-  types (including references to units by GUID) and registers one source with the patch 166 side channel.
-  [`CoopActorTransientStateSync.cs`](../../tools/mod-bootstrap/CoopActorTransientStateSync.cs) sends the actor fields a combat
-  save leaves out (pending heat, knockdown and prone flags, death flags, the occupied design mask).
+  [`LoadSteps.cs`](../../tools/mod-bootstrap/LoadSteps.cs) lists what to carry, one row per mod, and
+  [`ModStateCarry.cs`](../../tools/mod-bootstrap/ModStateCarry.cs) encodes each row's static fields and actor fields by their
+  declared types (including references to units and components by GUID) and registers one source with the patch 166 side channel.
+  It sends the actor fields a combat save leaves out (pending heat, knockdown and prone flags, death flags) the same way;
+  [`CoopActorTransientStateSync.cs`](../../tools/mod-bootstrap/CoopActorTransientStateSync.cs) sends the occupied design mask.
+  [`ModStateCoopCensus.cs`](../../tools/mod-bootstrap/ModStateCoopCensus.cs) then compares the host's and the guest's hash of
+  every other mod static field the encoder could carry, and logs each one that differs, so a new mod's lost state is named.
   A decision only one peer makes, such as an AI check or a HUD toggle, is recorded by its authority and replayed on the
   others with the outcome forced ([`CoopDecisionChannel.cs`](../../tools/mod-bootstrap/CoopDecisionChannel.cs)).
-  [`CoopRngSweepDeterminism.cs`](../../tools/mod-bootstrap/CoopRngSweepDeterminism.cs) seeds the remaining unseeded mod random
-  draws (ConcreteJungle ambushes, CollateralDamage, TisButAScratch overcrowding and others) per scope in co-op.
+  [`CoopRngSweepDeterminism.cs`](../../tools/mod-bootstrap/CoopRngSweepDeterminism.cs) holds every mod's random draws in step in co-op,
+  with no per-mod adapter. Shared game points (spawn, attack complete, activation end, injury, hit info and others) are scopes
+  seeded from the contract GUID and a key both players share. Inside a scope, the `System.Random` draws, `new Random()` and
+  `Guid.NewGuid` calls in the mods' own methods (every loaded mod outside UCU's own) come from per-site values of that seed.
+  Mod entry points no shared point reaches are rows of one declaration table. It arms only in a co-op combat with a mod loaded.
 - In a co-op combat the same mod save support is on whether or not in-mission saves is ticked, so the combat save a host
   sends for a resync or rejoin carries mod state and the other player's load uses UCU's save adapters. The adapters
   register at the first co-op combat, and MissionControl's cargo load patch comes off when it ends. IRTweaks' combat-save

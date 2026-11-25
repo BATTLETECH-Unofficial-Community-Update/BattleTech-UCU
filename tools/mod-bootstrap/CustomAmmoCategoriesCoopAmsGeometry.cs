@@ -3,8 +3,8 @@
 // CAC shoots AMS at each missile along its trajectory spline: genreateAMSInterceptionInfo (in its AttackSequence.GenerateToHitInfo postfix)
 // samples the spline every 10 m (`while (num3 < length)`, `num3 += 10f`) and fires each AMS whose owner's CurrentPosition is within Range.
 // The spline (AdvWeaponHitInfoRec.GenerateTrajectory) runs from the launcher bone, weaponRep.vfxTransforms[hitIndex % n].position, to
-// hitPosition, the target's hit-location bone or the miss point: both are this peer's own animated scene poses. CustomAmmoCategoriesCoopImpact
-// seeds the random draws, so the shape is equal, but the ends are not. CBTBE-9 seq 231141 (Cyclops LRM10 on the Atlas): the start differed
+// hitPosition, the target's hit-location bone or the miss point: both are this peer's own animated scene poses. CoopRngSweepDeterminism
+// seeds the random draws (R1 hit-info and to-hit), so the shape is equal, but the ends are not. CBTBE-9 seq 231141 (Cyclops LRM10 on the Atlas): the start differed
 // about 0.03 m and the ends up to 0.62 m between peers; on missile 8 the host's spline had one more 10 m sample inside the Battlemaster's
 // range, so its AMS fired 16 shots on the host and 15 on the guest (AMS ammo 124/125, CAC-AMShootsCount 16/15) and compare 163 forced a resync.
 // This adapter, only when an assembly named CustomAmmoCategories is loaded and only in a co-op combat, makes the host's two points the

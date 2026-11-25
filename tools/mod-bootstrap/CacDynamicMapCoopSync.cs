@@ -5,7 +5,7 @@
 // whose combined mask MapMetaData.GetPriorityDesignMask returns (CAC postfix MapMetaData_GetPriorityDesignMask). A combat's destruction
 // clears them (CombatGameState_OnCombatGameDestroyed prefix: DynamicMapHelper.ClearTerrain), so a guest's reload loses every minefield and
 // every smoke/oil/temporary mask while the host, which never reloads, keeps them. Both are written during play only in attack and move
-// resolution, which runs on every peer with seeded draws (CustomAmmoCategoriesCoopImpact: the MineField constructor, mines on a move), so only
+// resolution, which runs on every peer with seeded draws (CoopRngSweepDeterminism R3 rows cac-mine-lay, cac-mine-abort, cac-mine-jump), so only
 // the reload loses them and nothing is sent with an invocation.
 // This adapter, only when an assembly named CustomAmmoCategories is loaded, registers a source with UCU's co-op side channel (patch 166).
 // The host's full state for a peer that has just loaded is:
@@ -17,7 +17,7 @@
 // re-added in the host's order through CAC's own MapTerrainDataCellEx.AddDesignMask, which rebuilds the combined mask (CreateMask finds it
 // in the DataManager by id or makes it); cells the host has no mask on are cleared (ReconstructTempDesignMask).
 // Fires (issue 24 gap review, 2026-11-22: "host decides, carry the result"): the result is carried, not the roll. A fire's start and spread
-// are seeded on both peers (CustomAmmoCategoriesCoopImpact `cacfire|...`: TryBurnCellSync, FireTick) and land in the same FIFO order (one
+// are seeded on both peers (CoopRngSweepDeterminism R3 rows cac-fire-burn, cac-fire: TryBurnCellSync, FireTick) and land in the same FIFO order (one
 // request per frame, DyncamicMapAsyncProcessor.Update), so normal play agrees; a guest's reload loses every fire (ClearTerrain), and burning
 // cells add heat to a unit that stands in or moves through them (CAC.cs:4217-4231, 40216, 40400), so the next compare would differ. A
 // postfix on MapTerrainDataCellEx.burn (installed at the first combat, after CAC's Init) records every hex a fire touched; the host sends,

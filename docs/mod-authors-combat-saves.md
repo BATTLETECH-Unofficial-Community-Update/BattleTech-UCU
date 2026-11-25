@@ -58,8 +58,9 @@ If you defer a step, set what it would have set, or let it run on a load.
 
 - CustomUnits adds its player-controlled convoy lance in an `InitializeContract` postfix. Running it again on a load
   would add the lance twice.
-- IRTweaks scales objective buildings' structure on contract complete. On a load the saved structure is already
-  scaled, and its "already scaled" list was cleared, so each load scales them again, silently.
+- IRTweaks scales objective buildings' structure on contract complete and whenever an objective attaches a building.
+  On a load the saved structure is already scaled, and its "already scaled" list was cleared, so each load scales them
+  again, silently. UCU skips that for a building whose `StartingStructure` is already not its unscaled value.
 
 Static mod state cleared in `CombatGameState._Init` is gone after a load unless your mod puts it back from the save,
 for example in a `Hydrate` postfix.

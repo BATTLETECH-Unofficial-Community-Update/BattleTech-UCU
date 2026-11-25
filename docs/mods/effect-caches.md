@@ -1,6 +1,7 @@
 # RogueTechPerfFixes and CustomStatisticEffects
 
-Code: [`EffectCacheLoadCompat.cs`](../../tools/mod-bootstrap/EffectCacheLoadCompat.cs),
+Code: [`EffectCacheLoadCompat.cs`](../../tools/mod-bootstrap/EffectCacheLoadCompat.cs) (run by
+[`LoadSteps.cs`](../../tools/mod-bootstrap/LoadSteps.cs) after `_Init` on a load),
 [`DesignMaskStickyLoadCompat.cs`](../../tools/mod-bootstrap/DesignMaskStickyLoadCompat.cs). Kind: combat saves, co-op. Both
 mods ship with BattleTech Advanced.
 

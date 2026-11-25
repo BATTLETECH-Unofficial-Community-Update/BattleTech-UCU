@@ -10,7 +10,6 @@ for the same roll.
 
 **What UCU does.** In a co-op combat only, the adapter sets `CurrentHitDirection` to the attack's own direction (`ToProne`
 for a prone target, otherwise `GetAttackDirection`) around `GetHitLocation` for CustomUnits' `CustomMech`, `TrooperSquad`
-and `FakeVehicleMech`, and puts each peer's value back afterwards. It installs when CustomAmmoCategories loads, as
-`CustomAmmoCategoriesCoopImpact.cs` does.
+and `FakeVehicleMech`, and puts each peer's value back afterwards. It installs when CustomAmmoCategories loads.
 
 **Upstream:** set `CurrentHitDirection` from the attack at the point of use, not from a side effect of one method.

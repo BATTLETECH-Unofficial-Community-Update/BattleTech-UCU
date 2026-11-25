@@ -13,10 +13,18 @@
 // (both peers share LocalPlayerTeamGuid, so both treat the same units as AI), so it is not a one-peer decision; its unseeded draws are an RNG item.
 // Rows (CoopDecisionChannel): cae-coop|decide|toggle|<actor>|uid=<uid>,on=<0/1>,roll=<0/1/~>, the same with |apply|, and |MISMATCH when the replay
 // ended in another state.
-// shortcut: until the click's order point the clicking peer's MECHS compare sees the new state and the others the old one (CustomAmmoCategoriesCoopModeSync
-// masks that window for weapon modes); upgrade if a leg shows an activation compare inside that window.
+// Until the click's order point the other peers hold the old state, so the clicking peer's MECHS compare (MechStatsReporter.OnTrigger, read through
+// StatCollection.GetStatKeyValues) reports, for each stat of the unit's mech, component and pilot collections the toggle changed, its value from
+// before the click while the stat still holds the toggle's value (as CustomAmmoCategoriesCoopModeSync does for weapon modes). The mask ends when the
+// click's record reaches its order point on this peer (CoopDecisionChannel.Ordered) or the combat changes. L2-d (logic-post4b-load-1): the guest's
+// Coolant Pod toggle reached the host 7.2 s later and the MECHS compare between them failed on CAEAIFailRollPassed and HeatSinkCapacity.
+// Rows: cae-coop|pending|<actor>|stats=<n> at the click, cae-coop|masked|<actor>|stats=<n>|drift=<n> in a compare (drift: a masked stat that has
+// moved since the toggle, reported as it is), cae-coop|ordered|<actor>.
+// shortcut: compare fields that are not stats (Current Heat, Is Operational, ...) are not masked; a failed activation's damage moves stats only,
+// but upgrade if a leg shows a core field differing in this window.
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
 
@@ -33,8 +41,20 @@ namespace BattleTechPort
         static object replayComponent;
         static bool? forcedRoll;
         static string replayRoll;
+        const string Absent = "~";
+        static MethodInfo keyValues;
+        static int inCompare, maskRows;
+        static object maskCombat;
+        // Per clicked unit: per stat collection, stat -> { value before the first pending click, value after the last }.
+        static readonly Dictionary<object, Dictionary<object, Dictionary<string, string[]>>> masks = new Dictionary<object, Dictionary<object, Dictionary<string, string[]>>>(new SameObject());
 
-        sealed class Rec { public string State; }
+        sealed class Rec { public string State; public Dictionary<object, Dictionary<string, string>> Before; }
+
+        sealed class SameObject : IEqualityComparer<object>
+        {
+            public new bool Equals(object a, object b) => ReferenceEquals(a, b);
+            public int GetHashCode(object o) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(o);
+        }
 
         public static void Register(Action<string> logLine)
         {
@@ -58,12 +78,24 @@ namespace BattleTechPort
             }
             channel = new CoopDecisionChannel("cae-toggle", Tag, log);
             channel.On("toggle", Replay);
+            channel.Ordered = (kind, actor) => { if (kind == "toggle" && masks.Remove(actor)) log(Tag + "|ordered|" + CoopDecisionChannel.Get(actor, "GUID")); };
+            MethodInfo trigger = ModAssemblyHook.GameType("BattleTech.MechStatsReporter")?.GetMethod("OnTrigger", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            keyValues = ModAssemblyHook.GameType("BattleTech.StatCollection")?.GetMethod("GetStatKeyValues", BindingFlags.Instance | BindingFlags.Public, null, Type.EmptyTypes, null);
             try
             {
                 var h = new Harmony("battletech.port.cae-toggle-coop");
                 CoopDecisionChannel.Patch(h, toggle, prefix: Mine(nameof(TogglePrefix), Priority.First), finalizer: Mine(nameof(ToggleFinalizer), Priority.Last));
                 CoopDecisionChannel.Patch(h, rollFail, postfix: Mine(nameof(RollFailPostfix), Priority.Last));
-                channel.Install("HUD toggleComponentActivation sent at once and replayed with the clicker's fail roll");
+                string compare;
+                if (trigger == null || keyValues == null)
+                    compare = "ERROR pending compare not installed (MechStatsReporter.OnTrigger=" + (trigger != null) + " GetStatKeyValues=" + (keyValues != null) + ")";
+                else
+                {
+                    CoopDecisionChannel.Patch(h, trigger, prefix: Mine(nameof(CompareEnter), Priority.First), finalizer: Mine(nameof(CompareExit), Priority.Last));
+                    CoopDecisionChannel.Patch(h, keyValues, postfix: Mine(nameof(ReportPostfix), Priority.Last));
+                    compare = "the MECHS compare reads a toggled unit's pre-click stats until its order point";
+                }
+                channel.Install("HUD toggleComponentActivation sent at once and replayed with the clicker's fail roll; " + compare);
             }
             catch (Exception e) { log(Tag + "|FAILED|cae-toggle install|" + e.Message); }
         }
@@ -83,9 +115,86 @@ namespace BattleTechPort
                 if (actor == null || !CoopDecisionChannel.CoopCombat() || CoopDecisionChannel.InInvocation() || !CoopDecisionChannel.Authority(actor)) return;
                 recording = component;
                 recordedRoll = "~";
-                __state = new Rec { State = CoopDecisionChannel.RandomState() };
+                __state = new Rec { State = CoopDecisionChannel.RandomState(), Before = Snapshot(actor) };
             }
             catch (Exception e) { log(Tag + "|decide-failed|toggle|" + e.Message); }
+        }
+
+        // The stat collections the MECHS compare reads for this unit: the mech's, each component's, the pilot's.
+        static IEnumerable<object> Collections(object actor)
+        {
+            yield return CoopDecisionChannel.Get(actor, "StatCollection");
+            foreach (object c in CoopDecisionChannel.Get(actor, "allComponents") as IEnumerable ?? new object[0]) yield return CoopDecisionChannel.Get(c, "StatCollection");
+            yield return CoopDecisionChannel.Get(CoopDecisionChannel.Get(actor, "pilot"), "StatCollection");
+        }
+
+        // Called outside a compare, so the mask does not apply to what it reads.
+        static Dictionary<object, Dictionary<string, string>> Snapshot(object actor)
+        {
+            var all = new Dictionary<object, Dictionary<string, string>>(new SameObject());
+            if (keyValues == null) return all;
+            foreach (object stats in Collections(actor))
+                if (stats != null && !all.ContainsKey(stats))
+                    all[stats] = new Dictionary<string, string>((Dictionary<string, string>)keyValues.Invoke(stats, null), StringComparer.Ordinal);
+            return all;
+        }
+
+        // After a recorded toggle: add the stats it changed to the unit's mask; a stat back at its pre-click value leaves it.
+        static void Mask(object actor, Dictionary<object, Dictionary<string, string>> before)
+        {
+            object combat = CoopDecisionChannel.Combat();
+            if (!ReferenceEquals(combat, maskCombat)) { masks.Clear(); maskCombat = combat; }
+            if (!masks.TryGetValue(actor, out var unit)) masks[actor] = unit = new Dictionary<object, Dictionary<string, string[]>>(new SameObject());
+            foreach (var kv in Snapshot(actor))
+            {
+                before.TryGetValue(kv.Key, out var was);
+                was = was ?? new Dictionary<string, string>();
+                var keys = new List<string>(kv.Value.Keys);
+                foreach (string key in was.Keys) if (!kv.Value.ContainsKey(key)) keys.Add(key);
+                foreach (string key in keys)
+                {
+                    string pre = was.TryGetValue(key, out string a) ? a : Absent, post = kv.Value.TryGetValue(key, out string b) ? b : Absent;
+                    if (pre == post) continue;
+                    if (!unit.TryGetValue(kv.Key, out var stats)) unit[kv.Key] = stats = new Dictionary<string, string[]>(StringComparer.Ordinal);
+                    if (stats.TryGetValue(key, out string[] m)) m[1] = post;   // an earlier pending click keeps its pre-click value
+                    else stats[key] = new[] { pre, post };
+                    if (stats[key][0] == stats[key][1]) stats.Remove(key);
+                }
+            }
+            int n = 0;
+            foreach (var s in unit.Values) n += s.Count;
+            if (n == 0) masks.Remove(actor);
+            log(Tag + "|pending|" + CoopDecisionChannel.Get(actor, "GUID") + "|stats=" + n);
+        }
+
+        static void CompareEnter() { inCompare++; }
+
+        static void CompareExit() { if (inCompare > 0) inCompare--; }
+
+        // Inside a MECHS compare: a stat the pending toggle changed reports its pre-click value while it still holds the toggle's.
+        static void ReportPostfix(object __instance, Dictionary<string, string> __result)
+        {
+            if (inCompare == 0 || masks.Count == 0 || __result == null) return;
+            try
+            {
+                if (!ReferenceEquals(CoopDecisionChannel.Combat(), maskCombat)) { masks.Clear(); return; }
+                foreach (var unit in masks)
+                {
+                    if (!unit.Value.TryGetValue(__instance, out var stats)) continue;
+                    int masked = 0, drift = 0;
+                    foreach (var kv in stats)
+                    {
+                        string now = __result.TryGetValue(kv.Key, out string v) ? v : Absent;
+                        if (now != kv.Value[1]) { drift++; continue; }
+                        if (kv.Value[0] == Absent) __result.Remove(kv.Key);
+                        else __result[kv.Key] = kv.Value[0];
+                        masked++;
+                    }
+                    if (++maskRows <= 40) log(Tag + "|masked|" + CoopDecisionChannel.Get(unit.Key, "GUID") + "|stats=" + masked + "|drift=" + drift);
+                    return;
+                }
+            }
+            catch (Exception e) { if (++maskRows <= 40) log(Tag + "|mask-failed|" + e.Message); }
         }
 
         static void ToggleFinalizer(object component, object __state)
@@ -96,7 +205,9 @@ namespace BattleTechPort
             {
                 string uid = CoopDecisionChannel.Get(component, "uid") as string;
                 string on = CoopDecisionChannel.B(Active(component));
-                channel.Decide("toggle", CoopDecisionChannel.Get(component, "parent"), "uid=" + uid + ",on=" + on + ",roll=" + recordedRoll, r.State, uid, on, recordedRoll);
+                object actor = CoopDecisionChannel.Get(component, "parent");
+                channel.Decide("toggle", actor, "uid=" + uid + ",on=" + on + ",roll=" + recordedRoll, r.State, uid, on, recordedRoll);
+                Mask(actor, r.Before);
                 channel.SendNow();
             }
             catch (Exception e) { log(Tag + "|decide-failed|toggle|" + e.Message); }

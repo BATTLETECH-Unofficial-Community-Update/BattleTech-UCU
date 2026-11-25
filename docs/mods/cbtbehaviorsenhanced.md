@@ -1,6 +1,6 @@
 # CBTBehaviorsEnhanced
 
-Code: [`CBTBehaviorsEnhancedCoopDeterminism.cs`](../../tools/mod-bootstrap/CBTBehaviorsEnhancedCoopDeterminism.cs),
+Code: [`CoopRngSweepDeterminism.cs`](../../tools/mod-bootstrap/CoopRngSweepDeterminism.cs),
 [`CBTBehaviorsEnhancedCoopStartupDecision.cs`](../../tools/mod-bootstrap/CBTBehaviorsEnhancedCoopStartupDecision.cs). Kind: co-op. It ships with
 BattleTech Advanced.
 
@@ -9,9 +9,11 @@ death-from-above in `AttackHelper.CreateImaginaryAttack` with its own unseeded `
 two peers' generators differ, so the same knockdown hit the left torso and right arm on the host and the left arm and left
 torso on the guest, and the unit compare resynced the guest.
 
-**What UCU does.** In a co-op combat only, the adapter seeds that generator around `CreateImaginaryAttack` from the contract
-GUID, the attacker, the target, whether it is a melee attack and its damage type, the cluster count, the round and the
-phase, and puts each peer's own state back afterwards. Single player is untouched.
+**What UCU does.** In a co-op combat only, `AttackHelper.CreateImaginaryAttack` is a scope in the sweep's declaration table,
+keyed by the contract GUID, the attacker, the target, whether it is a melee attack and its damage type, the cluster count,
+the round and the phase. Every `System.Random` draw CBTBehaviorsEnhanced's own methods make inside it, `Mod.Random`
+included, comes from a generator seeded from that scope, and each peer's own state is put back afterwards. Single player is
+untouched.
 
 **Startup checks.** When the AI's startup check fails, CBTBehaviorsEnhanced keeps the unit shut down and runs its pilot
 injury, system failure and ammo explosion checks in `MechStartUpNode.Tick`, which runs where the AI thinks, the host only.

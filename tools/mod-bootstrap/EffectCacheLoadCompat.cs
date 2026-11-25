@@ -12,7 +12,8 @@
 // GetAllEffectsTargeting reads it; expiringEffects is a per-tick scratch list): RogueTechPerfFixes' grouped by target, each
 // effect appended; CustomStatisticEffects' by its own Hydrate postfix. No statistic is touched: retail's saved values and
 // restored stat history stay as loaded. A mod whose _Init postfix is not installed (RogueTechPerfFixes' Patch.Vanilla off) is
-// left alone. Each mod is handled only when its assembly loads; without either, nothing is patched and nothing is logged.
+// left alone. Run as LoadSteps' phase-2 step (the registry patches _Init once, after both mods' ids, and calls this for a combat loading
+// from a save); without either mod the step is not installed and nothing is logged.
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -24,86 +25,65 @@ namespace BattleTechPort
     public static class EffectCacheLoadCompat
     {
         const string Tag = "effect-cache-load";
-        const string RtpfId = "RogueTechPerfFixes", CseId = "ru.kmission.customstatisticeffects";
+        public const string RtpfId = "RogueTechPerfFixes", CseId = "ru.kmission.customstatisticeffects";
         static Action<string> log;
-        static bool patched;
+        static bool prepared;
         static MethodInfo initMethod;
-        static PropertyInfo loadingProp, managerProp;
+        static PropertyInfo managerProp;
         static FieldInfo effectsField, targetField;
         static FieldInfo rtpfCache;          // RogueTechPerfFixes.Patches.H_EffectManager._cache
         static MethodInfo cseHydratePostfix; // CustomStatisticEffects.EffectManager_Hydrate.Postfix(EffectManager, List<Effect>)
         static Type statisticEffectType;
 
-        public static void Register(Action<string> logLine)
+        // LoadSteps phase 2 (after CombatGameState._Init on a load, after RTPF's and CSE's own _Init postfixes). The registry patches
+        // _Init once for every step and passes only a combat that is loading from a save.
+        public static void AfterInit(object combat, Action<string> logLine)
         {
             log = logLine;
-            ModAssemblyHook.When("RogueTechPerfFixes", ApplyRtpf, logLine, Tag);
-            ModAssemblyHook.When("CustomStatisticEffects", ApplyCse, logLine, Tag);
+            if (!prepared) { prepared = true; Prepare(); }
+            if (initMethod == null) return;
+            InitPostfix(combat);
         }
 
-        static void ApplyRtpf(Assembly mod)
+        // Reflection on the mods' types, at the first load: every mod has run its Init by now (a read of the field's value before it
+        // would run H_EffectManager's type initializer too early).
+        static void Prepare()
         {
-            // Reflection only: reading the field's value would run H_EffectManager's type initializer before ModTek calls the mod's Init.
-            FieldInfo cache = mod.GetType("RogueTechPerfFixes.Patches.H_EffectManager", false)?.GetField("_cache", BindingFlags.Static | BindingFlags.NonPublic);
-            if (cache == null || !typeof(IDictionary).IsAssignableFrom(cache.FieldType) || cache.FieldType.GetGenericArguments().Length != 2)
-            {
-                log(Tag + "|skipped|RogueTechPerfFixes|shape changed _cache=" + (cache != null));
-                return;
-            }
-            if (!PatchInit()) return;
-            rtpfCache = cache;
-            log(Tag + "|armed|RogueTechPerfFixes|" + mod.GetName().Version);
-        }
-
-        static void ApplyCse(Assembly mod)
-        {
-            MethodInfo postfix = mod.GetType("CustomStatisticEffects.EffectManager_Hydrate", false)?.GetMethod("Postfix", BindingFlags.Static | BindingFlags.Public);
-            ParameterInfo[] ps = postfix?.GetParameters();
-            if (ps == null || ps.Length != 2 || ps[0].ParameterType.FullName != "BattleTech.EffectManager" || !typeof(IList).IsAssignableFrom(ps[1].ParameterType))
-            {
-                log(Tag + "|skipped|CustomStatisticEffects|shape changed EffectManager_Hydrate.Postfix=" + (postfix != null));
-                return;
-            }
-            if (!PatchInit()) return;
-            cseHydratePostfix = postfix;
-            log(Tag + "|armed|CustomStatisticEffects|" + mod.GetName().Version);
-        }
-
-        // One postfix on CombatGameState._Init serves both mods; it runs after their own _Init postfixes (HarmonyAfter on their ids).
-        static bool PatchInit()
-        {
-            if (patched) return true;
             const BindingFlags inst = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            Assembly rtpf = ModStateCarry.FindAssembly("RogueTechPerfFixes");
+            Assembly cse = ModStateCarry.FindAssembly("CustomStatisticEffects");
+            FieldInfo cache = rtpf?.GetType("RogueTechPerfFixes.Patches.H_EffectManager", false)?.GetField("_cache", BindingFlags.Static | BindingFlags.NonPublic);
+            if (rtpf != null && (cache == null || !typeof(IDictionary).IsAssignableFrom(cache.FieldType) || cache.FieldType.GetGenericArguments().Length != 2))
+                log(Tag + "|skipped|RogueTechPerfFixes|shape changed _cache=" + (cache != null));
+            else if (rtpf != null) { rtpfCache = cache; log(Tag + "|armed|RogueTechPerfFixes|" + rtpf.GetName().Version); }
+            MethodInfo postfix = cse?.GetType("CustomStatisticEffects.EffectManager_Hydrate", false)?.GetMethod("Postfix", BindingFlags.Static | BindingFlags.Public);
+            ParameterInfo[] ps = postfix?.GetParameters();
+            if (cse != null && (ps == null || ps.Length != 2 || ps[0].ParameterType.FullName != "BattleTech.EffectManager" || !typeof(IList).IsAssignableFrom(ps[1].ParameterType)))
+                log(Tag + "|skipped|CustomStatisticEffects|shape changed EffectManager_Hydrate.Postfix=" + (postfix != null));
+            else if (cse != null) { cseHydratePostfix = postfix; log(Tag + "|armed|CustomStatisticEffects|" + cse.GetName().Version); }
+            if (rtpfCache == null && cseHydratePostfix == null) return;
             Type combat = ModAssemblyHook.GameType("BattleTech.CombatGameState");
             Type manager = ModAssemblyHook.GameType("BattleTech.EffectManager");
             Type effect = ModAssemblyHook.GameType("BattleTech.Effect");
             statisticEffectType = ModAssemblyHook.GameType("BattleTech.StatisticEffect");
-            initMethod = combat?.GetMethod("_Init", inst | BindingFlags.DeclaredOnly);
-            loadingProp = combat?.GetProperty("IsLoadingFromSave", inst);
+            MethodInfo init = combat?.GetMethod("_Init", inst | BindingFlags.DeclaredOnly);
             managerProp = combat?.GetProperty("EffectManager", inst);
             effectsField = manager?.GetField("effects", inst);
             targetField = effect?.GetField("target", inst);
-            if (initMethod == null || loadingProp == null || managerProp == null || effectsField == null || targetField == null || statisticEffectType == null)
+            if (init == null || managerProp == null || effectsField == null || targetField == null || statisticEffectType == null)
             {
-                log(Tag + "|skipped|shape changed _Init=" + (initMethod != null) + " IsLoadingFromSave=" + (loadingProp != null) + " EffectManager="
-                    + (managerProp != null) + " effects=" + (effectsField != null) + " target=" + (targetField != null) + " StatisticEffect=" + (statisticEffectType != null));
-                return false;
+                log(Tag + "|skipped|shape changed _Init=" + (init != null) + " EffectManager=" + (managerProp != null) + " effects=" + (effectsField != null)
+                    + " target=" + (targetField != null) + " StatisticEffect=" + (statisticEffectType != null));
+                return;
             }
-            var postfix = new HarmonyMethod(typeof(EffectCacheLoadCompat).GetMethod(nameof(InitPostfix), BindingFlags.Static | BindingFlags.NonPublic))
-            {
-                after = new[] { RtpfId, CseId }
-            };
-            new Harmony("battletech.port.effect-cache-load").Patch(initMethod, postfix: postfix);
-            patched = true;
-            log(Tag + "|patched|CombatGameState._Init postfix after " + RtpfId + ", " + CseId);
-            return true;
+            initMethod = init;
         }
 
         static void InitPostfix(object __instance)
         {
             try
             {
-                if (!(bool)loadingProp.GetValue(__instance, null) || !CombatSavesRuntimeGate.SaveDataEnabled()) return;
+                if (!CombatSavesRuntimeGate.SaveDataEnabled()) return;
                 object manager = managerProp.GetValue(__instance, null);
                 IList effects = manager == null ? null : (IList)effectsField.GetValue(manager);
                 if (effects == null) { log(Tag + "|skipped|no hydrated EffectManager on the load"); return; }

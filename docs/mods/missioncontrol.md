@@ -41,9 +41,14 @@ which is abstract and a saved class. The game gave that class only a skeleton co
 the abstract class's contract once, and its mod subclasses save with it (with in-mission saves on, or in a co-op combat).
 
 **Co-op.** MissionControl rolls its encounter rule, extra lances and spawn placement from each player's own random
-stream and `Guid.NewGuid`, so co-op players ran different battles. In co-op only, UCU seeds `UnityEngine.Random` from
-the contract GUID around those two setup points, and gives MissionControl's own methods deterministic GUIDs.
-`Guid.NewGuid` itself is not patched.
+stream and `Guid.NewGuid`, so co-op players ran different battles. In co-op only, [`CoopRngSweepDeterminism.cs`](../../tools/mod-bootstrap/CoopRngSweepDeterminism.cs) seeds
+`UnityEngine.Random` from the contract GUID around `Contract.BeginRequestResources` and `EncounterLayerParent.InitializeContract`,
+around each spawn point and each result node that places units (rows of its declaration table), and gives MissionControl's
+own `Guid.NewGuid` call sites deterministic GUIDs. `Guid.NewGuid` itself is not patched.
+
+`MissionControlCoopDeterminism.cs` now only syncs the drop data. MissionControl learns the player's drop (difficulty, skull
+rating, tonnage) only from the lance screen, which only the host clicks, so a guest's values stayed 0 and its additional-lance
+logic ran on other data. In a co-op combat both players compute them from the contract's lance.
 
 **Upstream:** on a save load, rebuild what MissionControl added (or save it yourself); in co-op, draw from a seed both
 players share.

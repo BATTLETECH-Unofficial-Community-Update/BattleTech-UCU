@@ -55,6 +55,45 @@ namespace BattleTechPort
             }
         }
 
+        // Runs apply once, at the first mod assembly load after Assembly-CSharp's types exist (a callback registration only; the
+        // handler does no work until a mod assembly loads). Used for a game-point scope that must exist before first combat
+        // (CoopRngSweepDeterminism's FirstTimeInit, the timing HEAD FieldRepairs used); everything else runs at AtFirstCombat.
+        public static void WhenAnyMod(Action<Assembly> apply, Action<string> log, string tag)
+        {
+            bool done = false;
+            AssemblyLoadEventHandler handler = null;
+            handler = (s, e) =>
+            {
+                if (done) return;
+                if (GameType("BattleTech.CombatGameState") == null) return;
+                Assembly a = e.LoadedAssembly;
+                if (a == null) return;
+                string location;
+                try { location = a.Location; } catch { return; }
+                if (string.IsNullOrEmpty(location) || location.IndexOf("\\Mods\\", StringComparison.OrdinalIgnoreCase) < 0) return;
+                string full;
+                try { full = System.IO.Path.GetFullPath(location); } catch { return; }
+                if (full.IndexOf("\\Mods\\ModTek\\", StringComparison.OrdinalIgnoreCase) >= 0) return;
+                done = true;
+                AppDomain.CurrentDomain.AssemblyLoad -= handler;
+                try { apply(a); }
+                catch (Exception ex) { log(tag + "|FAILED|" + ex); }
+            };
+            AppDomain.CurrentDomain.AssemblyLoad += handler;
+            if (GameType("BattleTech.CombatGameState") != null)
+                foreach (Assembly loaded in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    string location;
+                    try { location = loaded.Location; } catch { continue; }
+                    if (string.IsNullOrEmpty(location) || location.IndexOf("\\Mods\\", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    if (location.IndexOf("\\Mods\\ModTek\\", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+                    done = true;
+                    AppDomain.CurrentDomain.AssemblyLoad -= handler;
+                    try { apply(loaded); } catch (Exception ex) { log(tag + "|FAILED|" + ex); }
+                    break;
+                }
+        }
+
         static readonly List<KeyValuePair<Action, string>> firstCombatPending = new List<KeyValuePair<Action, string>>();
         static bool firstCombatSeen, firstCombatHooked;
         static Action<string> firstCombatLog;

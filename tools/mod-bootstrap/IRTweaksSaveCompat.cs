@@ -1,11 +1,14 @@
 // IRTweaks adapter for combat saves (mod support).
-// With ScaleObjectiveBuildingStructure on (BTA 20.3 has it on), IRTweaks' postfix on
-// TurnDirector.OnInitializeContractComplete sets each objective building's Structure stat and StartingStructure to
-// floor(CurrentStructure x multi + mod). It keeps an "already scaled" list so that happens once, but clears that list in
-// CombatGameState._Init, and the game sends OnInitializeContractComplete again when a combat save loads. So on every load
-// the saved structure, already scaled, would be scaled again. The save holds the scaled Structure stat and
-// StartingStructure, and Building.InitFromSave gives the scene object its health back from them, so on a load the postfix
-// is skipped, with a log line: the buildings keep what they had at the save.
+// With ScaleObjectiveBuildingStructure on (BTA 20.3 has it on), IRTweaks' postfixes on
+// TurnDirector.OnInitializeContractComplete and on Building.AttachBuildingToObjective both call BuildingHelper.ScaleHealth,
+// which sets an objective building's Structure stat and StartingStructure to floor(CurrentStructure x multi + mod). It keeps
+// an "already scaled" list so that happens once, but clears that list in CombatGameState._Init, and the game does both again
+// when a combat save loads (each objective attaches its buildings again at its first check, UpdateCounts). So on every load, and on every
+// co-op resync, the saved structure, already scaled, would be scaled again (150 to 800, then 800 to 4050). The save holds the
+// scaled Structure stat and StartingStructure, and Building.InitFromSave gives the scene object its health back from them, so
+// in a combat from a save ScaleHealth is skipped, with a log line, for a building whose StartingStructure is not its unscaled
+// one: the buildings keep what they had at the save. A building first attached after the load still scales, and IRTweaks'
+// callers still put the skipped ones in its list.
 // IRTweaks' own code is patched only at the first CombatGameState._Init, after IRTweaks.Mod.Init has run and read its
 // settings, and only when ScaleObjectiveBuildingStructure is on. Patching it when its assembly loads compiles the
 // postfix, which runs IRTweaks.ModState's static constructor before Mod.Init; that constructor reads the not yet loaded
@@ -23,7 +26,8 @@ namespace BattleTechPort
         const string AssemblyName = "IRTweaks";
         static Action<string> log;
         static bool applied;
-        static PropertyInfo combatOf, wasFromSave;
+        static PropertyInfo combatOf, wasFromSave, guidOf, defOf, defPoints, starting;
+        static FieldInfo overridePoints;
         static MethodInfo scale;
         static Assembly irtweaks;
         static bool armed;
@@ -65,11 +69,15 @@ namespace BattleTechPort
         {
             const BindingFlags all = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
             irtweaks = assembly;
-            scale = assembly.GetType("IRTweaks.Modules.Combat.ScaleObjectiveBuildingStructure_TurnDirector_OnInitializeContractComplete", false)
-                ?.GetMethod("Postfix", all);
-            Type turnDirector = GameType("BattleTech.TurnDirector");
+            Type building = GameType("BattleTech.Building");
+            scale = building == null ? null : assembly.GetType("IRTweaks.Modules.Combat.BuildingHelper", false)?.GetMethod("ScaleHealth", all, null, new[] { building }, null);
             Type combat = GameType("BattleTech.CombatGameState");
-            combatOf = turnDirector == null ? null : AccessTools.Property(turnDirector, "Combat");
+            combatOf = building == null ? null : AccessTools.Property(building, "Combat");
+            guidOf = building == null ? null : AccessTools.Property(building, "GUID");
+            defOf = building == null ? null : AccessTools.Property(building, "BuildingDef");
+            defPoints = defOf == null ? null : AccessTools.Property(defOf.PropertyType, "StructurePoints");
+            starting = building == null ? null : AccessTools.Property(building, "StartingStructure");
+            overridePoints = building == null ? null : AccessTools.Field(building, "overrideStructurePoints");
             wasFromSave = combat?.GetProperty("WasFromSave", all);
             MethodInfo init = combat == null ? null : AccessTools.Method(combat, "_Init");
             if (init == null)
@@ -112,9 +120,10 @@ namespace BattleTechPort
                         log("irtweaks-save|combat saves on (UCU toggle)");
                     }
                 }
-                if (scale == null || combatOf == null || wasFromSave == null)
+                if (scale == null || combatOf == null || wasFromSave == null || defPoints == null || starting == null || overridePoints == null)
                 {
-                    log("irtweaks-save|skipped|scale adapter shape changed Postfix=" + (scale != null) + " TurnDirector.Combat=" + (combatOf != null) + " WasFromSave=" + (wasFromSave != null));
+                    log("irtweaks-save|skipped|scale adapter shape changed ScaleHealth=" + (scale != null) + " Building.Combat=" + (combatOf != null) + " WasFromSave=" + (wasFromSave != null)
+                        + " StructurePoints=" + (defPoints != null) + " StartingStructure=" + (starting != null) + " overrideStructurePoints=" + (overridePoints != null));
                     return;
                 }
                 object on = fixes?.GetType().GetField("ScaleObjectiveBuildingStructure")?.GetValue(fixes);
@@ -130,20 +139,24 @@ namespace BattleTechPort
                 }
                 new Harmony("battletech.port.irtweaks-save").Patch(scale,
                     prefix: new HarmonyMethod(typeof(IRTweaksSaveCompat).GetMethod(nameof(ScalePrefix), BindingFlags.Static | BindingFlags.NonPublic)));
-                log("irtweaks-save|patched|objective building scaling skipped on a load");
+                log("irtweaks-save|patched|objective buildings scaled at the save are not scaled again on a load");
             }
             catch (Exception ex) { log("irtweaks-save|arm|FAILED|" + ex); }
         }
 
-        // The patched method is IRTweaks' static Postfix(TurnDirector __instance, MessageCenterMessage message): __0 is the
-        // TurnDirector.
+        // The patched method is IRTweaks' static ScaleHealth(Building): __0 is the building.
         static bool ScalePrefix(object __0)
         {
             try
             {
                 object combat = __0 == null ? null : combatOf.GetValue(__0, null);
                 if (combat == null || !(bool)wasFromSave.GetValue(combat, null) || !CombatSavesRuntimeGate.SaveDataEnabled()) return true;
-                log("irtweaks-save|scale|skipped on load|ScaleObjectiveBuildingStructure: the save holds the scaled structure");
+                float now = (float)starting.GetValue(__0, null);
+                int points = (int)overridePoints.GetValue(__0);
+                object def = defOf.GetValue(__0, null);   // null: a restored building whose InitFromSave has not run yet
+                if (points <= 0 && def != null) points = (int)defPoints.GetValue(def, null);
+                if (points > 0 && now == points) return true;   // unscaled
+                log("irtweaks-save|scale|skipped on load|" + guidOf?.GetValue(__0, null) + " structure " + now + " unscaled " + points + ": the save holds the scaled structure");
                 return false;
             }
             catch (Exception ex) { log("irtweaks-save|scale|FAILED|" + ex); return true; }

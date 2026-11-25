@@ -32,7 +32,7 @@ namespace BattleTechPort
         public static void Register(Action<string> logLine)
         {
             log = logLine;
-            // Hooked on CustomAmmoCategories, which ships and loads AIM, as CustomAmmoCategoriesCoopImpact is; AIM is loaded by the first combat.
+            // Hooked on CustomAmmoCategories, which ships and loads AIM, as CoopRngSweepDeterminism's CustomAmmoCategories rows are; AIM is loaded by the first combat.
             ModAssemblyHook.When("CustomAmmoCategories", cac => ModAssemblyHook.AtFirstCombat(Apply, logLine, Tag), logLine, Tag);
         }
 

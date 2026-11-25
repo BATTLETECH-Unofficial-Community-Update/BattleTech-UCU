@@ -10,75 +10,48 @@
 // allComponents back in Init order in a Priority.Last postfix on Mech, Vehicle and Turret.Hydrate, before InitFromSave and InitAbilities
 // read it. The key is the unit's Def.Inventory, which Init walks: each entry takes the loaded component holding that ref, else the first
 // unused one with the same def id and mount. The saved uid is not usable: it is empty on most components when Hydrate ends (CBTBE-2,
-// 2026-11-22: 6 of 7 units). When a component matches no entry, the list is left as loaded and one row is logged. Both peers of a
+// 2026-11-22: 6 of 7 units). A plain MechComponent no entry holds was added after Init by a mod (Extended_CE's Gear_BEX parts) and goes
+// after the inventory in its loaded order; any other component that matches no entry leaves the list as loaded, with one row. Both peers of a
 // co-op combat loaded from a save then hold the same order as a combat never loaded. Single player is untouched (retail reorders on load).
-// Only game methods are patched: armed when Assembly-CSharp loads, installed at the first combat-save load. shortcut: the eventual home is HBS's own Hydrate (a transplant patch at
+// Only game methods are patched, by LoadSteps' phase-1 hook (installed at the first combat-save load). shortcut: the eventual home is HBS's own Hydrate (a transplant patch at
 // the post-4B fold).
 using System;
 using System.Collections;
 using System.Reflection;
-using HarmonyLib;
 
 namespace BattleTechPort
 {
     public static class ComponentOrderLoadCompat
     {
-        const string OwnId = "battletech.port.component-order-load";
         const string Tag = "component-order-load";
         static Action<string> log;
         static PropertyInfo battleTechGame;
         static FieldInfo allComponents;
+        static bool prepared, usable;
         static int rows;
 
-        static bool applied;
-
-        // Armed when Assembly-CSharp loads (game types do not resolve earlier), installed at the first combat-save load, before any
-        // actor hydrates (the ActorHydrateDeferral pattern).
-        public static void Register(Action<string> logLine)
+        // LoadSteps phase 1 (after Mech, Vehicle and Turret.Hydrate, Priority.Last): the registry installs the postfix at the first
+        // combat-save load, before any actor hydrates, and calls this once per hydrated actor.
+        public static void AfterHydrate(object actor, Action<string> logLine)
         {
             log = logLine;
-            ModAssemblyHook.When("Assembly-CSharp", game =>
-            {
-                MethodInfo create = game.GetType("BattleTech.GameInstance", false)?.GetMethod("CreateCombatFromSave", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                if (create == null) { log(Tag + "|skipped|GameInstance.CreateCombatFromSave not found"); return; }
-                new Harmony(OwnId).Patch(create, prefix: new HarmonyMethod(typeof(ComponentOrderLoadCompat).GetMethod(nameof(BeforeCombatLoad), BindingFlags.Static | BindingFlags.NonPublic)));
-                log(Tag + "|armed|GameInstance.CreateCombatFromSave");
-            }, logLine, Tag);
+            if (!prepared) { prepared = true; usable = Prepare(); }
+            if (usable) Postfix(actor);
         }
 
-        static void BeforeCombatLoad()
-        {
-            if (applied) return;
-            applied = true;
-            try { Apply(); }
-            catch (Exception ex) { log(Tag + "|FAILED|" + ex); }
-        }
-
-        static void Apply()
+        static bool Prepare()
         {
             const BindingFlags stat = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
             const BindingFlags inst = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
             battleTechGame = ModAssemblyHook.GameType("BattleTech.UnityGameInstance")?.GetProperty("BattleTechGame", stat);
             allComponents = ModAssemblyHook.GameType("BattleTech.AbstractActor")?.GetField("allComponents", inst);
-            Type refs = ModAssemblyHook.GameType("BattleTech.Save.Test.SerializableReferenceContainer");
-            Type combat = ModAssemblyHook.GameType("BattleTech.CombatGameState");
-            if (battleTechGame == null || allComponents == null || refs == null || combat == null)
+            if (battleTechGame == null || allComponents == null)
             {
-                log(Tag + "|skipped|shape changed BattleTechGame=" + (battleTechGame != null) + " AbstractActor.allComponents=" + (allComponents != null)
-                    + " SerializableReferenceContainer=" + (refs != null) + " CombatGameState=" + (combat != null));
-                return;
+                log(Tag + "|skipped|shape changed BattleTechGame=" + (battleTechGame != null) + " AbstractActor.allComponents=" + (allComponents != null));
+                return false;
             }
-            var harmony = new Harmony(OwnId);
-            var postfix = new HarmonyMethod(typeof(ComponentOrderLoadCompat).GetMethod(nameof(Postfix), BindingFlags.Static | BindingFlags.NonPublic)) { priority = Priority.Last };
-            string patched = "";
-            foreach (string name in new[] { "BattleTech.Mech", "BattleTech.Vehicle", "BattleTech.Turret" })
-            {
-                MethodInfo m = ModAssemblyHook.GameType(name)?.GetMethod("Hydrate", inst, null, new[] { refs, combat }, null);
-                if (m == null) { log(Tag + "|skipped-method|" + name + ".Hydrate not found"); continue; }
-                harmony.Patch(m, postfix: postfix);
-                patched += " " + name;
-            }
-            log(Tag + "|installed|allComponents put back in Init order after a co-op combat-save load:" + patched + ".Hydrate");
+            log(Tag + "|installed|allComponents put back in Init order after a co-op combat-save load (LoadSteps phase 1)");
+            return true;
         }
 
         static bool CoopSession()
@@ -116,12 +89,22 @@ namespace BattleTechPort
                     used[pick] = true;
                     at[k++] = list[pick];
                 }
-                if (k != n) { Skip(__instance, (n - k) + " of " + n + " components match no inventory entry"); return; }
+                // A component no inventory entry holds was added after Init by a mod (Extended_CE's Gear_BEX parts: BEXT-SPEED-fix layer G, every BEX:T
+                // unit, 4 to 20 of them). Init order has it after the inventory, in the order it was added, which the loaded misc list keeps, so it
+                // goes after the inventory in its loaded order. A weapon, ammo box or jump jet that matches no entry still leaves the list as loaded.
+                int added = 0;
+                for (int j = 0; j < n; j++)
+                {
+                    if (used[j]) continue;
+                    string kind = list[j]?.GetType().Name;
+                    if (kind != "MechComponent") { Skip(__instance, (n - k) + " of " + n + " components match no inventory entry, one a " + kind); return; }
+                    at[k++] = list[j]; added++;
+                }
                 bool moved = false;
                 for (int i = 0; i < n; i++) if (!ReferenceEquals(list[i], at[i])) { moved = true; break; }
                 if (!moved) return;
                 for (int i = 0; i < n; i++) list[i] = at[i];
-                if (++rows <= 120) log(Tag + "|restored|" + Get(__instance, "GUID") + "|" + n + " components, " + byValue + " matched by def id and mount");
+                if (++rows <= 120) log(Tag + "|restored|" + Get(__instance, "GUID") + "|" + n + " components, " + byValue + " matched by def id and mount, " + added + " added after Init kept after the inventory");
             }
             catch (Exception e) { log(Tag + "|postfix-failed|" + Get(__instance, "GUID") + "|" + e.Message); }
         }

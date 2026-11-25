@@ -71,6 +71,21 @@ namespace ReleaseGate
         /// <summary>The share for this release, from the server. Throws UnlockException with a message for the player.</summary>
         public static byte[] Get(VaultLock lk)
         {
+#if UCU_MAC
+            // A Mac install unlocks on its own game files, as a GOG install does: the proof is an HMAC of the install's
+            // fingerprint bound to the release, and the server checks it against the Mac fingerprints it was given. The fingerprint
+            // and the share stay in memory: nothing is written, and nothing secret is a command-line argument.
+            string macKey = lk.Id + "|mac";
+            lock (Cache)
+            {
+                byte[] hit;
+                if (Cache.TryGetValue(macKey, out hit)) { LastRoute = "mac"; return hit; }
+            }
+            byte[] macShare = Ask((UrlOverride ?? lk.Url).TrimEnd('/') + "/v1/unlock", GogRequest(lk.Id, Gate.Fingerprint(Retail)));
+            lock (Cache) Cache[macKey] = macShare;
+            LastRoute = "mac";
+            return macShare;
+#else
             if (ShareOverride != null) { LastRoute = "share"; return ShareOverride; }
             string code = Normalize(Code);
             if (code.Length > 0 && code.Length != CodeLength) throw new UnlockException("An access code has " + CodeLength + " letters and digits (dashes don't count).");
@@ -90,6 +105,7 @@ namespace ReleaseGate
             lock (Cache) Cache[cacheKey] = share;
             LastRoute = route;
             return share;
+#endif
         }
 
         static byte[] Ask(string url, Dictionary<string, object> request)
@@ -119,8 +135,13 @@ namespace ReleaseGate
             if (error == "steam-blocked") throw new UnlockException("This Steam account can't unlock releases. If you think that's a mistake, ask for an access code.");
             if (error == "steam-off") throw new UnlockException(string.IsNullOrEmpty(message) ? "Unlocking through Steam is switched off for now. Enter an access code instead." : message);
             if (error == "steam-down") throw new UnlockException("Steam couldn't be asked to confirm your copy right now. Try again later.");
+#if UCU_MAC
+            if (error == "gog") throw new UnlockException("The unlock server didn't accept this Mac install of BATTLETECH. It needs the Steam version, unmodified: verify the game's files in Steam and try again.");
+            if (error == "gog-off") throw new UnlockException(string.IsNullOrEmpty(message) ? "Unlocking is switched off for now. Try again later." : message);
+#else
             if (error == "gog") throw new UnlockException("The unlock server didn't accept this GOG install of BATTLETECH. If you were given an access code, enter it instead.");
             if (error == "gog-off") throw new UnlockException(string.IsNullOrEmpty(message) ? "Unlocking GOG installs is switched off for now. Enter an access code instead." : message);
+#endif
             if (error == "release") throw new UnlockException("This release has been withdrawn. Look for a newer one.");
             if (error == "closed") throw new UnlockException(string.IsNullOrEmpty(message) ? "Installing is switched off for now." : message);
             if (error == "slow-down") throw new UnlockException("Too many tries. Wait a while and try again.");

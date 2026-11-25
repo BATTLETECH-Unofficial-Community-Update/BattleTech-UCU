@@ -46,9 +46,22 @@ namespace ReleaseGate
     {
         public byte[] ReleaseId;
         public string Url;
+#if UCU_MAC
+        public string Platform;    // null: a Windows package; Gate.MacPlatform: a macOS one
+#endif
         public string Id { get { return Gate.Hex(ReleaseId); } }
     }
 
+#if UCU_MAC
+    /// <summary>A package of the other platform: refused before the retail install is looked at and before any server is asked.</summary>
+    public sealed class PlatformException : Exception
+    {
+        public readonly string Package;   // the package's platform; null for a Windows package
+        public PlatformException(string package, string reader)
+            : base(package == null ? "This package is for Windows." : "This package is for macOS (" + package + ").") { Package = package; }
+    }
+
+#endif
     /// <summary>A locked vault couldn't be unlocked; Message is for the player.</summary>
     public sealed class UnlockException : Exception
     {
@@ -58,7 +71,34 @@ namespace ReleaseGate
     public static class Gate
     {
         public const uint AppId = 637090;
+#if UCU_MAC
+        public static string VaultName = "package.vault";
+        /// <summary>The platform string of a macOS Steam package (vault BTU6GAM4). A Windows package has none.</summary>
+        public const string MacPlatform = "mac-steam";
+        /// <summary>The platform whose packages this process reads and writes: null for Windows, MacPlatform for macOS.</summary>
+        public static string Platform;
+        /// <summary>Switches this process to a platform's names (vault, public manifest); the reader and the writer both follow it.</summary>
+        public static void Use(string platform)
+        {
+            Platform = platform;
+            VaultName = platform == null ? "package.vault" : "package-mac.vault";
+            PublicManifest.FileName = platform == null ? "ucu-manifest.tsv" : "ucu-manifest-mac.tsv";
+        }
+
+        /// <summary>A package of the other platform is refused here, before anything else is read and before any server is asked.</summary>
+        static void CheckPlatform(string package)
+        {
+            if (package != Platform) throw new PlatformException(package, Platform);
+        }
+
+        /// <summary>What a retail slot's check text says: a macOS vault repeats its platform inside the sealed text, so the header can't be edited.</summary>
+        static string RetailText(string platform)
+        {
+            return platform == null ? RetailOk : RetailOk + "|" + platform;
+        }
+#else
         public const string VaultName = "package.vault";
+#endif
 
         /// <summary>GOG's product id for BATTLETECH; its install holds goggame-&lt;id&gt;.info and a registry key of that id.</summary>
         public const string GogId = "1482783682";
@@ -77,7 +117,11 @@ namespace ReleaseGate
         /// </summary>
         public static bool SetsAppIdInCode(string player)
         {
+#if UCU_MAC
+            string dll = Path.Combine(player, Layout.Of(player).Data + "Managed/Assembly-CSharp.dll");
+#else
             string dll = Path.Combine(player, "BattleTech_Data", "Managed", "Assembly-CSharp.dll");
+#endif
             if (!File.Exists(dll)) return false;
             byte[] b = File.ReadAllBytes(dll), w = Encoding.Unicode.GetBytes("SteamGameId");
             for (int i = 0; i + w.Length <= b.Length; i++)
@@ -104,6 +148,10 @@ namespace ReleaseGate
         // v4 (key separation): a byte after the magic says whether the vault is locked; ranged entries need no magic of their
         // own. The packer writes only v4. v2 and v3 vaults are still read.
         static readonly byte[] Magic4 = Encoding.ASCII.GetBytes("BTU6GAR4");
+#if UCU_MAC
+        // The macOS package: the v4 layout with a platform string after the URL (always locked).
+        static readonly byte[] MagicMac4 = Encoding.ASCII.GetBytes("BTU6GAM4");
+#endif
         const int Window = 1 << 20;
 
         static bool Starts(byte[] head, byte[] magic)
@@ -117,18 +165,30 @@ namespace ReleaseGate
         /// <summary>False when a vault starts with another format's mark: a newer installer is needed to read it.</summary>
         public static bool IsVault(byte[] head)
         {
-            return Starts(head, Magic) || Starts(head, Magic3) || Starts(head, MagicR) || Starts(head, MagicR3) || Starts(head, Magic4);
+            return Starts(head, Magic) || Starts(head, Magic3) || Starts(head, MagicR) || Starts(head, MagicR3) || Starts(head, Magic4)
+#if UCU_MAC
+                || Starts(head, MagicMac4)
+#endif
+                ;
         }
 
         /// <summary>True for a vault whose packer scanned for retail ranges: the ranged v2 and v3 magics, and every v4.</summary>
         public static bool IsRangedVault(byte[] head)
         {
-            return Starts(head, MagicR) || Starts(head, MagicR3) || Starts(head, Magic4);
+            return Starts(head, MagicR) || Starts(head, MagicR3) || Starts(head, Magic4)
+#if UCU_MAC
+                || Starts(head, MagicMac4)
+#endif
+                ;
         }
 
         public static bool IsV4Vault(byte[] head)
         {
-            return Starts(head, Magic4);
+            return Starts(head, Magic4)
+#if UCU_MAC
+                || Starts(head, MagicMac4)
+#endif
+                ;
         }
 
         static bool IsV3(byte[] magic)
@@ -159,9 +219,27 @@ namespace ReleaseGate
                 byte[] magic = r.ReadBytes(Magic3.Length);
                 if (Starts(magic, Magic) || Starts(magic, MagicR)) return null;
                 bool v4 = Starts(magic, Magic4);
-                if (v4 && !r.ReadBoolean()) return null;
+#if UCU_MAC
+                bool mac = Starts(magic, MagicMac4);
+                v4 = v4 || mac;
+#endif
+                if (v4 && !r.ReadBoolean())
+                {
+#if UCU_MAC
+                    if (mac) throw new InvalidDataException("A macOS package is always locked");
+                    CheckPlatform(null);
+#endif
+                    return null;
+                }
                 if (!v4 && !IsV3(magic)) throw new InvalidDataException("Not a package vault");
+#if UCU_MAC
+                var peeked = new VaultLock { ReleaseId = r.ReadBytes(16), Url = r.ReadString() };
+                if (mac) peeked.Platform = r.ReadString();
+                CheckPlatform(peeked.Platform);
+                return peeked;
+#else
                 return new VaultLock { ReleaseId = r.ReadBytes(16), Url = r.ReadString() };
+#endif
             }
         }
 
@@ -205,6 +283,9 @@ namespace ReleaseGate
         /// <summary>Reads the retail files the key depends on. A missing file throws, naming it.</summary>
         public static byte[] Fingerprint(string retail)
         {
+#if UCU_MAC
+            return Layout.Of(retail).Fingerprint(retail, null);
+#else
             using (var h = NewSha())
             using (var ms = new MemoryStream())
             {
@@ -233,6 +314,7 @@ namespace ReleaseGate
                 }
                 return h.ComputeHash(ms.ToArray());
             }
+#endif
         }
 
         static void Add(Stream s, string label, byte[] digest)
@@ -256,7 +338,14 @@ namespace ReleaseGate
 
         public static Aes NewAes(byte[] key, byte[] iv)
         {
+#if NET
+            Aes a = Aes.Create();
+            a.KeySize = 256;
+            a.Mode = CipherMode.CBC;
+            a.Padding = PaddingMode.PKCS7;
+#else
             var a = new AesCryptoServiceProvider { KeySize = 256, Mode = CipherMode.CBC, Padding = PaddingMode.PKCS7 };
+#endif
             a.Key = key;
             a.IV = iv;
             return a;
@@ -340,7 +429,12 @@ namespace ReleaseGate
             using (var w = new BinaryWriter(f))
             {
                 var slots = new List<byte[]>();
+#if UCU_MAC
+                if (Platform != null && lk == null) throw new ArgumentException("A macOS package is always locked: give the unlock server's master secret and URL.");
+                w.Write(Platform == null ? Magic4 : MagicMac4);
+#else
                 w.Write(Magic4);
+#endif
                 w.Write(lk != null);
                 if (lk == null)
                 {
@@ -350,9 +444,16 @@ namespace ReleaseGate
                 {
                     w.Write(lk.ReleaseId);
                     w.Write(lk.Url);
+#if UCU_MAC
+                    if (Platform != null) w.Write(Platform);
+#endif
                     foreach (byte[] fp in fingerprints)
                     {
+#if UCU_MAC
+                        slots.Add(Seal(Encoding.ASCII.GetBytes(RetailText(Platform)), fp, "retail4"));
+#else
                         slots.Add(Seal(Encoding.ASCII.GetBytes(RetailOk), fp, "retail4"));
+#endif
                         slots.Add(Seal(packageKey, Concat(fp, share), "slot4"));
                     }
                 }
@@ -423,12 +524,24 @@ namespace ReleaseGate
             {
                 byte[] magic = r.ReadBytes(Magic.Length);
                 bool v4 = Starts(magic, Magic4);
+#if UCU_MAC
+                bool mac = Starts(magic, MagicMac4);
+                v4 = v4 || mac;
+#endif
                 if (!v4 && !IsV3(magic) && !Starts(magic, Magic) && !Starts(magic, MagicR)) throw new InvalidDataException("Not a package vault");
                 bool locked = v4 ? r.ReadBoolean() : IsV3(magic);
                 // Each version seals under its own labels, so nothing in a v4 vault opens as another version. v2 and v3 share
                 // the unnumbered ones.
                 string any = v4 ? "4" : "", own = v4 ? "4" : "3";
                 VaultLock lk = locked ? new VaultLock { ReleaseId = r.ReadBytes(16), Url = r.ReadString() } : null;
+#if UCU_MAC
+                if (mac)
+                {
+                    if (lk == null) throw new InvalidDataException("A macOS package is always locked");
+                    lk.Platform = r.ReadString();
+                }
+                CheckPlatform(lk == null ? null : lk.Platform);
+#endif
                 byte[] key = null, slot = null;
                 int slots = r.ReadInt32();
                 for (int i = 0; i < slots; i += locked ? 2 : 1)
@@ -436,7 +549,12 @@ namespace ReleaseGate
                     byte[] s = r.ReadBytes(r.ReadInt32());
                     if (!locked) { key = key ?? Open(s, fingerprint, "slot" + any); continue; }
                     byte[] sealedKey = r.ReadBytes(r.ReadInt32());
+#if UCU_MAC
+                    byte[] check = slot == null ? Open(s, fingerprint, "retail" + own) : null;
+                    if (check != null && Encoding.ASCII.GetString(check) == RetailText(lk.Platform)) slot = sealedKey;
+#else
                     if (slot == null && Open(s, fingerprint, "retail" + own) != null) slot = sealedKey;
+#endif
                 }
                 if (locked && slot == null) return null;
                 byte[] manifestKey = key;
@@ -589,6 +707,9 @@ namespace ReleaseGate
 
         public static string FindGog()
         {
+#if UCU_MAC
+            return null;   // GOG's macOS build is not packaged yet
+#else
             foreach (RegistryView view in new[] { RegistryView.Registry32, RegistryView.Registry64 })
                 try
                 {
@@ -601,15 +722,21 @@ namespace ReleaseGate
                 }
                 catch (Exception e) when (e is System.Security.SecurityException || e is UnauthorizedAccessException || e is IOException) { }
             return null;
+#endif
         }
 
         /// <summary>Finds the install through Steam's own library files, without needing Steam to be running.</summary>
         public static string FindSteam()
         {
             string steam = null;
+#if UCU_MAC
+            steam = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Application Support", "Steam");
+            if (!Directory.Exists(steam)) return null;
+#else
             using (RegistryKey k = Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam"))
                 if (k != null) steam = k.GetValue("SteamPath") as string;
             if (string.IsNullOrEmpty(steam)) return null;
+#endif
             var libraries = new List<string> { steam };
             string vdf = Path.Combine(steam, "steamapps", "libraryfolders.vdf");
             if (File.Exists(vdf))

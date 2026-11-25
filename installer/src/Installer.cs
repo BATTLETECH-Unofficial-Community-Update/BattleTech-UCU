@@ -199,6 +199,9 @@ namespace ReleaseGate
             if (p.Length == 0) return p;
             if (p.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) p = Path.GetDirectoryName(p) ?? p;
             if (string.Equals(Path.GetFileName(p), "BattleTech_Data", StringComparison.OrdinalIgnoreCase)) p = Path.GetDirectoryName(p) ?? p;
+#if UCU_MAC
+            if (string.Equals(Path.GetFileName(p), "BattleTech.app", StringComparison.OrdinalIgnoreCase)) p = Path.GetDirectoryName(p) ?? p;
+#endif
             return p;
         }
 
@@ -209,6 +212,14 @@ namespace ReleaseGate
             try
             {
                 if (!Directory.Exists(c.Folder)) { c.Problem = "That folder doesn't exist."; return c; }
+#if UCU_MAC
+                // Before anything is read or asked: a Windows install is not what this tool installs from.
+                if (Layout.Of(c.Folder) != Layout.Mac)
+                {
+                    c.Problem = "That is not a macOS BATTLETECH install: it has no BattleTech.app. Choose the folder that holds BattleTech.app (in Steam: right-click BATTLETECH, Manage, Browse local files).";
+                    return c;
+                }
+#endif
                 byte[] fingerprint;
                 try { fingerprint = Gate.Fingerprint(c.Folder); }
                 catch (FileNotFoundException e)
@@ -224,7 +235,11 @@ namespace ReleaseGate
                 List<Entry> entries;
                 using (Stream vault = OpenVault())
                 {
+#if UCU_MAC
+                    if (vault == null) { c.Problem = "The game package wasn't found. Put package-mac.vault and its data folder beside ucu, or use --remote."; return c; }
+#else
                     if (vault == null) { c.Problem = "The game package wasn't found. Keep the downloaded zip, or package.vault, in the same folder as this installer."; return c; }
+#endif
                     Unlock.Retail = c.Folder;
                     c.Store = Gate.StoreOf(c.Folder);
                     try { c.Key = Gate.ReadVault(vault, fingerprint, Unlock.Get, c.Store, out entries); }
@@ -234,14 +249,33 @@ namespace ReleaseGate
                         c.CodeProblem = true;
                         return c;
                     }
+#if UCU_MAC
+                    catch (PlatformException e)
+                    {
+                        c.Problem = e.Message + " This tool installs the macOS release only.";
+                        return c;
+                    }
+#endif
                     // A vault in a format newer than this installer, or a damaged one. Online, the first is handed on instead.
                     catch (InvalidDataException)
                     {
+#if UCU_MAC
+                        c.Problem = "This package can't be read. It may need a newer version of this tool, or be damaged: download the tool or the package again.";
+#else
                         c.Problem = "This package can't be read. It may need a newer installer: run the BattleTechUCUSetup.exe that came with it, or download the package again.";
+#endif
                         return c;
                     }
                 }
                 c.Entries = entries;
+#if UCU_MAC
+                // A package is data from a server and from whoever sealed it: no entry may name a place outside the install folder.
+                if (c.Key != null && entries.Any(e => UnsafePath(e.Path)))
+                {
+                    c.Problem = "This package lists a file outside its own folder. Nothing was installed. Download the package again.";
+                    return c;
+                }
+#endif
                 if (c.Key == null)
                     c.Problem = c.Store == Gate.Gog
                         ? "This package doesn't accept this GOG install of BATTLETECH. It needs version 1.9.1, unmodified: verify or repair the game in GOG Galaxy, or reinstall it, and try again."
@@ -252,7 +286,11 @@ namespace ReleaseGate
                     if (missing > 0 && _remote != null)
                         c.Problem = string.Format("Release {0} is missing {1} package file(s).", _remote.Version, missing);
                     else if (missing > 0)
+#if UCU_MAC
+                        c.Problem = string.Format("{0} package file(s) are missing. Keep every file of the package beside ucu, or use --remote.", missing);
+#else
                         c.Problem = string.Format("{0} package file(s) are missing. Keep every downloaded file (the zip, or each data part) in the same folder as this installer.", missing);
+#endif
                     else
                         CheckManifest(c);
                 }
@@ -269,7 +307,11 @@ namespace ReleaseGate
         static void CheckManifest(RetailCheck c)
         {
             byte[] bytes = ReadManifest(c.Store);
+#if UCU_MAC
+            if (bytes == null) { c.Problem = "This package has no public manifest (" + PublicManifest.FileName + "). Download the package again."; return; }
+#else
             if (bytes == null) return;
+#endif
             try
             {
                 c.Manifest = PublicManifest.Read(bytes);
@@ -300,7 +342,11 @@ namespace ReleaseGate
             string path = Path.Combine(dest, PublicManifest.FileName);
             if (!File.Exists(path))
             {
+#if UCU_MAC
+                message = "This folder has no " + PublicManifest.FileName + ": it holds no install made by this tool. Run ucu install first.";
+#else
                 message = "This folder has no " + PublicManifest.FileName + ". Install or update with this installer first.";
+#endif
                 return InstallResult.Failed;
             }
             byte[] bytes = File.ReadAllBytes(path);
@@ -321,6 +367,9 @@ namespace ReleaseGate
                     if (!File.Exists(f)) bad.Add("missing " + r.Path);
                     else if (new FileInfo(f).Length != r.Size) bad.Add("size " + r.Path);
                     else if (PublicManifest.Sha512File(f) != r.Sha512) bad.Add("hash " + r.Path);
+#if UCU_MAC
+                    else if (r.Exec && !MacPlatform.IsExecutable(f) && MachOFile(f)) bad.Add("mode " + r.Path);   // a lost execute bit: the app wouldn't start
+#endif
                     Interlocked.Add(ref progress.Done, r.Size);
                 });
             }
@@ -329,11 +378,18 @@ namespace ReleaseGate
                 message = "Check stopped.";
                 return InstallResult.Cancelled;
             }
+#if UCU_MAC
+            CheckSeal(dest, bad);
+#endif
             string sum = "Manifest SHA-256 " + PublicManifest.Sha256Of(bytes) + ".";
             if (bad.Count > 0)
             {
                 var l = bad.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+#if UCU_MAC
+                string next = "Run ucu repair to repair them.";
+#else
                 string next = "Run the installer again to repair them.";
+#endif
                 try
                 {
                     Dictionary<string, string[]> record = ReadRecord(dest);
@@ -348,6 +404,9 @@ namespace ReleaseGate
                     l.Count, rows.Count, string.Join(", ", l.Take(5)), l.Count > 5 ? ", ..." : "", next, sum);
                 return InstallResult.Damaged;
             }
+#if UCU_MAC
+            sum = "The signature list (CodeResources) matches what was installed. " + sum;
+#endif
             message = string.Format("All {0} files match the public manifest. {1}", rows.Count, sum);
             return InstallResult.Installed;
         }
@@ -366,7 +425,12 @@ namespace ReleaseGate
             string full, root;
             try
             {
+#if UCU_MAC
+                // The real path, links followed, so a link into the BATTLETECH folder is the folder it points to.
+                full = MacPlatform.RealPath(Path.GetFullPath(dest.Trim().Trim('"'))).TrimEnd('/') + "/";
+#else
                 full = Path.GetFullPath(dest.Trim().Trim('"')).TrimEnd('\\') + "\\";
+#endif
                 root = Path.GetPathRoot(full);
             }
             catch (Exception e) when (e is ArgumentException || e is NotSupportedException || e is PathTooLongException)
@@ -374,25 +438,171 @@ namespace ReleaseGate
                 return "That isn't a valid folder.";
             }
             if (!Directory.Exists(root)) return "Drive " + root + " isn't available.";
+#if UCU_MAC
+            string r = MacPlatform.RealPath(Path.GetFullPath(c.Folder)).TrimEnd('/') + "/";
+#else
             string r = Path.GetFullPath(c.Folder).TrimEnd('\\') + "\\";
+#endif
             if (full.StartsWith(r, StringComparison.OrdinalIgnoreCase))
                 return "Install somewhere outside your BATTLETECH folder. The original game stays as it is.";
+#if !UCU_MAC
+            // The same line on the real paths (links, junctions, 8.3 names, case). Only the comparisons use them: the drive, the plan
+            // and the free space stay on the typed path, so a mapped drive or a subst letter is judged as it always was.
+            string real = RealPath(dest).TrimEnd('\\') + "\\";
+            if (real.StartsWith(RealPath(c.Folder).TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase))
+                return "Install somewhere outside your BATTLETECH folder. The original game stays as it is.";
+#endif
+#if UCU_MAC
+            string refusal = DestRefusal(dest, c.Entries);
+            if (refusal != null) return refusal;
+            string pkg = MacPlatform.RealPath(Path.GetFullPath(PackageFolder)).TrimEnd('/') + "/";
+#else
+            string foreign = ForeignGame(dest);
+            if (foreign != null) return foreign;
             string pkg = Path.GetFullPath(PackageFolder).TrimEnd('\\') + "\\";
+#endif
             // Only a folder that holds the package is protected. The launcher copy sits in the install it updates, and an
             // installer may sit at a drive root or above the install: neither holds package.vault (issue 27).
-            if (full.StartsWith(pkg, StringComparison.OrdinalIgnoreCase)
-                && (File.Exists(Path.Combine(PackageFolder, Gate.VaultName)) || Parts.ContainsKey(Gate.VaultName)))
+            bool holdsPackage = File.Exists(Path.Combine(PackageFolder, Gate.VaultName)) || Parts.ContainsKey(Gate.VaultName);
+            if (full.StartsWith(pkg, StringComparison.OrdinalIgnoreCase) && holdsPackage)
                 return "Install somewhere outside this package folder.";
+#if !UCU_MAC
+            if (holdsPackage && real.StartsWith(RealPath(PackageFolder).TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase))
+                return "Install somewhere outside this package folder.";
+#endif
             try { space = PlanInstall(c, full).Space; }
             catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
             {
                 return "That folder can't be read: " + e.Message;
             }
+#if UCU_MAC
+            long free = MacPlatform.FreeSpace(full);   // the volume the folder is on, not "/"
+#else
             long free = new DriveInfo(root).AvailableFreeSpace;
+#endif
             if (free < space + Headroom)
                 return string.Format("{0:F1} GiB {1}needed on {2}, {3:F1} GiB free.", (space + Headroom) / 1073741824.0,
                     space < FreshSpace(c, full) ? "more " : "", root, free / 1073741824.0);
             return null;
+        }
+
+#if !UCU_MAC
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern uint GetFinalPathNameByHandleW(Microsoft.Win32.SafeHandles.SafeFileHandle h, System.Text.StringBuilder path, uint size, uint flags);
+
+        /// <summary>
+        /// The folder's real path: as much of it as exists with links, junctions, 8.3 names and letter case resolved by Windows
+        /// (the rest, not yet created, as typed). Two spellings of one folder give the same string, apart from the case of a
+        /// part that doesn't exist yet, so compare with OrdinalIgnoreCase.
+        /// </summary>
+        public static string RealPath(string path)
+        {
+            string full = Path.GetFullPath(path.Trim().Trim('"'));
+            string rest = "", cur = full.Length > 3 ? full.TrimEnd('\\') : full;
+            while (cur != null && !Directory.Exists(cur))
+            {
+                rest = "\\" + Path.GetFileName(cur) + rest;
+                cur = Path.GetDirectoryName(cur);
+            }
+            if (cur == null) return full;
+            // FILE_FLAG_BACKUP_SEMANTICS (0x02000000) lets CreateFile open a folder; no access is asked, only its name.
+            using (var h = CreateFileW(cur, 0, 7, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero))
+            {
+                if (h.IsInvalid) return full;
+                var sb = new System.Text.StringBuilder(1024);
+                uint n = GetFinalPathNameByHandleW(h, sb, (uint)sb.Capacity, 0);
+                if (n == 0 || n > sb.Capacity) return full;
+                string real = sb.ToString();
+                if (real.StartsWith(@"\\?\UNC\", StringComparison.Ordinal)) real = @"\\" + real.Substring(8);
+                else if (real.StartsWith(@"\\?\", StringComparison.Ordinal)) real = real.Substring(4);
+                return real.TrimEnd('\\') + (rest.Length == 0 && real.Length <= 3 ? "\\" : rest);
+            }
+        }
+
+        /// <summary>
+        /// A folder holding a BATTLETECH game: its data folder, or for the destination itself its exe too (an exe with no data
+        /// folder is no game to write over, so a loose BattleTech.exe in a folder above the destination doesn't count).
+        /// </summary>
+        static bool HoldsGame(string folder, bool exeCounts)
+        {
+            return Directory.Exists(Path.Combine(folder, "BattleTech_Data")) || (exeCounts && File.Exists(Path.Combine(folder, "BattleTech.exe")));
+        }
+
+        /// <summary>
+        /// A UCU player's exe, told from retail's by its bytes: the Win32 version resource of BattleTech.exe is the Unity version that
+        /// built it, 6000.x for every UCU player and 2018.4 for BATTLETECH, Steam and GOG alike. A GOG install also carries the base
+        /// game's goggame-&lt;id&gt;.info, which a UCU install never has (only the DLC markers are copied). An exe with no readable
+        /// version, or no exe at all, is not told apart from retail.
+        /// </summary>
+        static bool IsUcuPlayer(string folder)
+        {
+            string exe = Path.Combine(folder, "BattleTech.exe");
+            try
+            {
+                return File.Exists(exe) && !File.Exists(Path.Combine(folder, "goggame-" + Gate.GogId + ".info"))
+                    && System.Diagnostics.FileVersionInfo.GetVersionInfo(exe).FileMajorPart >= 6000;
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { return false; }
+        }
+
+        /// <summary>Our record (a finished install), our unfinished marker (written before an install's first file), or a UCU player's exe.</summary>
+        static bool IsOurInstall(string folder)
+        {
+            return File.Exists(Path.Combine(folder, RecordName)) || File.Exists(Path.Combine(folder, PendingName)) || IsUcuPlayer(folder);
+        }
+
+        /// <summary>
+        /// A BATTLETECH game that this installer didn't install, or a copy of one: it holds a game, and has neither our install record
+        /// (a finished install), nor our unfinished marker (written before an install's first file), nor a UCU player's exe (a
+        /// restored backup, a lost or damaged record). Anything else is theirs, a doubtful folder included.
+        /// </summary>
+        static bool IsForeignGame(string folder, bool exeCounts)
+        {
+            return HoldsGame(folder, exeCounts) && !IsOurInstall(folder);
+        }
+#endif
+
+        /// <summary>
+        /// The refusal for a destination that is, or lies inside, a BATTLETECH game this installer didn't install (another Steam or
+        /// GOG copy, a backup, a second library), or null. Judged on the real path, so a link, a junction, an 8.3 name, another case
+        /// or a trailing slash doesn't hide it. A destination that is ours (our record, our unfinished marker, or a UCU player's exe)
+        /// is never refused because of what lies around it. A parent that merely holds a game isn't refused either: nothing of the
+        /// game's is written. Reads only; the command line asks it before anything is read online or any server is asked, and Install
+        /// asks it again before its first write. The Mac tool has its own line (DestRefusal).
+        /// </summary>
+        public static string ForeignGame(string dest)
+        {
+#if UCU_MAC
+            return null;
+#else
+            if (string.IsNullOrWhiteSpace(dest)) return null;
+            string hit = null, how = null;
+            try
+            {
+                string real = RealPath(dest);
+                string start = real.Length > 3 ? real.TrimEnd('\\') : real;
+                if (IsOurInstall(start)) return null;   // ours: updated in place, writes only inside itself, whatever lies around it
+                for (string p = start; p != null && hit == null; p = Path.GetDirectoryName(p))
+                {
+                    bool self = string.Equals(p, start, StringComparison.OrdinalIgnoreCase);
+                    if (IsForeignGame(p, self)) { hit = p; how = self ? "is" : "is inside"; }
+                }
+            }
+            catch (Exception e) when (e is ArgumentException || e is NotSupportedException || e is PathTooLongException)
+            {
+                return "That isn't a valid folder.";
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                return "That folder can't be read: " + e.Message;
+            }
+            if (hit == null) return null;
+            return string.Format("That folder {0} a BATTLETECH game that this installer didn't install: {1}. Installing there would write over it, so nothing was written. " +
+                "Choose another folder for UCU, such as a new BATTLETECH-UCU beside it. If {1} is really a UCU install that lost its files, move it away first; don't delete it.", how, hit);
+#endif
         }
 
         /// <summary>Creates the folder and proves it can be written to, so a protected location fails before any copying.</summary>
@@ -408,7 +618,11 @@ namespace ReleaseGate
             }
             catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
             {
+#if UCU_MAC
+                return "Can't write to that folder. Choose a folder you own. If macOS asked for permission to use the folder, allow it in System Settings > Privacy & Security.";
+#else
                 return "Can't write to that folder. Choose another one, or run this installer as administrator.";
+#endif
             }
         }
 
@@ -427,6 +641,112 @@ namespace ReleaseGate
             catch (Exception e) when (e is ArgumentException || e is NotSupportedException || e is IOException) { return false; }
         }
 
+#if UCU_MAC
+        /// <summary>This folder has an install record: an install of it finished, or started and stopped.</summary>
+        public static bool HasRecord(string dest)
+        {
+            return File.Exists(Path.Combine(dest, RecordName));
+        }
+
+        /// <summary>
+        /// The refusal for a destination in the BATTLETECH folder (real paths, links followed), or null. The command line asks it
+        /// before anything is read online and before any server is asked; CheckDest holds the same line again.
+        /// </summary>
+        public static string InsideRetail(string dest, string retail)
+        {
+            string full = MacPlatform.RealPath(Path.GetFullPath(dest.Trim().Trim('"'))).TrimEnd('/') + "/";
+            string r = MacPlatform.RealPath(Path.GetFullPath(TidyRetail(retail))).TrimEnd('/') + "/";
+            return full.StartsWith(r, StringComparison.OrdinalIgnoreCase) ? "Install somewhere outside your BATTLETECH folder. The original game stays as it is." : null;
+        }
+
+        /// <summary>An entry path that isn't plainly inside the install folder: empty, absolute, or with an empty, "." or ".." part.</summary>
+        static bool UnsafePath(string p)
+        {
+            return string.IsNullOrEmpty(p) || Path.IsPathRooted(p) || p[0] == '\\' || p.Split('/', '\\').Any(s => s.Length == 0 || s == "." || s == "..");
+        }
+
+        /// <summary>A symbolic link (or, on Windows, a junction), whether or not its target exists. A link is never followed by an install.</summary>
+        static bool IsLink(string p)
+        {
+            try
+            {
+                return new FileInfo(p).LinkTarget != null
+                    || ((File.Exists(p) || Directory.Exists(p)) && (File.GetAttributes(p) & FileAttributes.ReparsePoint) != 0);
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { return false; }
+        }
+
+        /// <summary>
+        /// Why this folder can't take an install, or null. The folder must not be a link and must not hold a BattleTech.app this tool
+        /// didn't install (a Steam library, a copy or a backup of the game: whatever --retail says), and no entry of the package
+        /// may lead through a link or out of the folder: a file written or deleted through a link lands outside it, in BATTLETECH
+        /// among other places. Case-insensitive, as the Mac's volumes are. Nothing is written.
+        /// </summary>
+        public static string DestRefusal(string dest, IEnumerable<Entry> entries)
+        {
+            string full = Path.GetFullPath(dest.Trim().Trim('"')).TrimEnd('/');
+            if (IsLink(full)) return "The install folder is a link. Choose a real folder.";
+            if (Directory.Exists(Path.Combine(full, "BattleTech.app")) && !HasRecord(full) && !Unfinished(full))   // the unfinished marker is written before the first file: a killed first install is ours
+                return "That folder already holds a BattleTech.app that this tool didn't install (BATTLETECH itself, or a copy). Choose an empty folder.";
+            string real = MacPlatform.RealPath(full).TrimEnd('/') + "/";
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (Entry e in entries)
+            {
+                if (UnsafePath(e.Path)) return "This package lists a file outside its own folder. Nothing was installed.";
+                string cur = full, rel = "";
+                foreach (string part in e.Path.Split('/'))
+                {
+                    cur = Path.Combine(cur, part);
+                    rel += "/" + part;
+                    if (!seen.Add(rel)) continue;
+                    if (IsLink(cur)) return "Inside the install folder, " + rel.Substring(1) + " is a link. An install writes through links, so move it away first or choose another folder.";
+                    if (Directory.Exists(cur) && !(MacPlatform.RealPath(cur).TrimEnd('/') + "/").StartsWith(real, StringComparison.OrdinalIgnoreCase))
+                        return "Inside the install folder, " + rel.Substring(1) + " leads outside it. Choose another folder.";
+                }
+            }
+            return null;
+        }
+
+        /// <summary>A folder on the way to this file (below dest) is a link.</summary>
+        static bool ThroughLink(string dest, string path)
+        {
+            string cur = dest;
+            string[] parts = path.Split('/', '\\');
+            for (int i = 0; i < parts.Length - 1; i++)
+                if (IsLink(cur = Path.Combine(cur, parts[i]))) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// A bundle's _CodeSignature/CodeResources is packed but not in the public manifest (it lists every file's hash), so verify checks
+        /// it against the install record, which holds what the install wrote: present, same size, same SHA-256, not marked for repair.
+        /// The app's own must be there, and so must every other one the record lists.
+        /// </summary>
+        static void CheckSeal(string dest, ConcurrentBag<string> bad)
+        {
+            Dictionary<string, string[]> record = ReadRecord(dest);
+            foreach (string rel in record.Keys.Where(PublicManifest.IsHidden).Concat(new[] { PublicManifest.MacHidden }).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                string f = Path.Combine(dest, rel);
+                string[] row;
+                if (!File.Exists(f)) bad.Add("missing " + rel);
+                else if (!record.TryGetValue(rel, out row) || row[1] == "-" || new FileInfo(f).Length.ToString() != row[0]
+                         || !string.Equals(PublicManifest.Sha256Of(File.ReadAllBytes(f)), row[1], StringComparison.OrdinalIgnoreCase))
+                    bad.Add("hash " + rel);
+            }
+        }
+
+        /// <summary>A Mach-O file, by its first four bytes: the files whose execute bit matters.</summary>
+        static bool MachOFile(string path)
+        {
+            using (var f = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                var b = new byte[4];
+                return PublicManifest.IsMachO(b, f.Read(b, 0, 4));
+            }
+        }
+#endif
+
         static Dictionary<string, string[]> ReadRecord(string dest)
         {
             var r = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
@@ -444,8 +764,12 @@ namespace ReleaseGate
         {
             string p = Path.Combine(dest, RecordName);
             File.WriteAllLines(p + ".part", record.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase).Select(x => x.Key + "\t" + string.Join("\t", x.Value)));
+#if UCU_MAC
+            File.Move(p + ".part", p, true);   // renamed over the old record: no moment without one, so a kill never leaves the folder disowned
+#else
             if (File.Exists(p)) File.Delete(p);
             File.Move(p + ".part", p);
+#endif
         }
 
         static string[] Stamp(string file, string sha)
@@ -499,6 +823,9 @@ namespace ReleaseGate
 
         static bool Linkable(Entry e)
         {
+#if UCU_MAC
+            return e.RetailPath.Length > 0;   // a clone shares no bytes that a write could reach, so every retail file may be one
+#endif
             if (e.RetailPath.Length == 0 || e.Size < LinkFloor) return false;
             string p = e.Path.Replace('\\', '/');
             string ext = Path.GetExtension(p).ToLowerInvariant();
@@ -522,6 +849,9 @@ namespace ReleaseGate
         /// <summary>True when the install folder and the retail folder are on the same NTFS (or ReFS) volume.</summary>
         public static bool CanLink(string retail, string dest)
         {
+#if UCU_MAC
+            return MacPlatform.CanClone(retail, dest);
+#endif
             try
             {
                 string a = Volume(retail), b = Volume(dest);
@@ -569,6 +899,13 @@ namespace ReleaseGate
         /// <summary>The sentence the form and the command line show about linking for this destination.</summary>
         public static string LinkNote(RetailCheck c, string dest)
         {
+#if UCU_MAC
+            long cloneBytes = c.Entries.Where(Linkable).Sum(e => e.Size);
+            if (cloneBytes == 0) return "";
+            return CanLink(c.Folder, dest)
+                ? Size(cloneBytes) + " of BATTLETECH's own files will be clones of yours (APFS) and take no extra space."
+                : "This folder isn't on the same APFS volume as BATTLETECH, so " + Size(cloneBytes) + " of BATTLETECH's own files will be copied. Install on the same volume to clone them instead.";
+#endif
             long bytes = c.Entries.Where(Linkable).Sum(e => e.Size);
             if (bytes == 0) return "";
             string gib = Size(bytes);
@@ -599,6 +936,9 @@ namespace ReleaseGate
         /// </summary>
         static bool NeedsRelink(string retail, string dest, Entry e, bool sameVolume, bool linked)
         {
+#if UCU_MAC
+            return false;   // a clone is a file of its own: nothing to turn back into a link or a copy
+#endif
             if (!sameVolume || e.RetailPath.Length == 0) return false;
             string src = Path.Combine(retail, e.RetailPath);
             if (!File.Exists(src)) return false;
@@ -654,7 +994,11 @@ namespace ReleaseGate
             progress.Total = plan.Fetch.Sum(b => _remote.Blobs[b].Length);
             _downloads = Path.Combine(dest, DownloadName);
             if (plan.Fetch.Count == 0) return InstallResult.Installed;
+#if UCU_MAC
+            long free = MacPlatform.FreeSpace(dest);
+#else
             long free = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(dest))).AvailableFreeSpace;
+#endif
             long need = plan.Space + Headroom;
             if (free < need)
             {
@@ -774,13 +1118,30 @@ namespace ReleaseGate
             string retail = c.Folder;
             progress.Total = c.Need;
             var bad = new List<string>();
+#if UCU_MAC
+            // Before the first write, whoever called: no link or foreign app in the way (CheckDest asks the same).
+            string refusal = DestRefusal(dest, c.Entries);
+            if (refusal != null) { message = refusal; return InstallResult.Failed; }
+#else
+            // Before the first write, whoever called: not over a BATTLETECH game this installer didn't install (CheckDest asks the same).
+            string foreign = ForeignGame(dest);
+            if (foreign != null) { message = foreign; return InstallResult.Failed; }
+#endif
             Directory.CreateDirectory(dest);
+#if UCU_MAC
+            File.WriteAllText(Path.Combine(dest, PendingName), "An install or update of this folder started and hasn't finished. Run ucu install or ucu update again.\r\n");
+#else
             File.WriteAllText(Path.Combine(dest, PendingName), "An install or update of this folder started and hasn't finished. Run the installer again.\r\n");
+#endif
             Dictionary<string, string[]> old = ReadRecord(dest);
             var now = new ConcurrentDictionary<string, string[]>(old, StringComparer.OrdinalIgnoreCase);
             int same = 0, linkedFiles = 0;
             long linkedBytes = 0, copiedRetail = 0;
             bool link = CanLink(retail, dest);
+#if UCU_MAC
+            var flushed = System.Diagnostics.Stopwatch.StartNew();
+            bool wrote = false;
+#endif
             string text = null;
             InstallResult result;
             try
@@ -819,14 +1180,24 @@ namespace ReleaseGate
                         try
                         {
                             string src = e.RetailPath.Length > 0 ? Path.Combine(retail, e.RetailPath) : null;
+#if UCU_MAC
+                            // CodeResources is packed but not in the public manifest: it is still checked by its blob and plaintext hashes.
+                            ManifestRow listed = null;
+                            string sha512 = c.Manifest == null || !c.Manifest.TryGetValue(e.Path, out listed) ? null : listed.Sha512;
+#else
                             string sha512 = c.Manifest == null ? null : c.Manifest[e.Path].Sha512;
+#endif
                             // A read-only retail file is copied: a link shares its attributes, and a later update couldn't delete it.
                             if (src != null && linked && File.Exists(src) && (File.GetAttributes(src) & FileAttributes.ReadOnly) == 0)
                             {
                                 ok = Verify(src, e.Sha256, sha512, progress, stop);
                                 if (ok)
                                 {
+#if UCU_MAC
+                                    if (MacPlatform.TryClone(src, part))
+#else
                                     if (CreateHardLink(part, src, IntPtr.Zero))
+#endif
                                     {
                                         Interlocked.Increment(ref linkedFiles);
                                         Interlocked.Add(ref linkedBytes, e.Size);
@@ -853,9 +1224,18 @@ namespace ReleaseGate
                         }
                         if (ok)
                         {
+#if UCU_MAC
+                            ManifestRow row = null;
+                            MacPlatform.SetMode(part, c.Manifest != null && c.Manifest.TryGetValue(e.Path, out row) && row.Exec && MachOFile(part));
+#endif
                             if (File.Exists(target)) File.Delete(target);
                             File.Move(part, target);
                             now[e.Path] = Stamp(target, e.Sha256);
+#if UCU_MAC
+                            // The record is written every second, not only at the end: a killed install leaves what it finished, so install resumes it.
+                            lock (now)
+                                if (!wrote || flushed.ElapsedMilliseconds >= 1000) { WriteRecord(dest, now); wrote = true; flushed.Restart(); }
+#endif
                         }
                         else
                         {
@@ -894,12 +1274,19 @@ namespace ReleaseGate
                 // Files an earlier version installed that this one doesn't have. They go even when a file failed its check: one
                 // left beside its replacement can be picked up by the game (a bundle patch is found by its name's start).
                 var keep = new HashSet<string>(c.Entries.Select(e => e.Path), StringComparer.OrdinalIgnoreCase);
+#if UCU_MAC
+                string root = Path.GetFullPath(dest).TrimEnd('/') + "/";
+#else
                 string root = Path.GetFullPath(dest).TrimEnd('\\') + "\\";
+#endif
                 int removed = 0;
                 foreach (string path in old.Keys.Where(p => !keep.Contains(p)))
                 {
                     string full = Path.GetFullPath(Path.Combine(dest, path));
                     if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase)) continue;
+#if UCU_MAC
+                    if (ThroughLink(dest, path)) continue;   // a folder that became a link: the file in it isn't ours to delete
+#endif
                     if (File.Exists(full)) { File.Delete(full); removed++; }
                     string[] gone;
                     now.TryRemove(path, out gone);
@@ -927,15 +1314,25 @@ namespace ReleaseGate
                 text = string.Format("Installed {0} files, {1:F2} GiB.", c.Entries.Count, c.Need / 1073741824.0);
                 if (same > 0 || removed > 0)
                     text += string.Format(" {0} were already up to date; {1} old file(s) removed.", same, removed);
+#if UCU_MAC
+                if (linkedFiles > 0)
+                    text += string.Format(" {0} files ({1}) are clones of your BATTLETECH files and take no extra space.", linkedFiles, Size(linkedBytes));
+#else
                 if (linkedFiles > 0)
                     text += string.Format(" {0} files ({1}) are links to your BATTLETECH files and take no extra space.", linkedFiles, Size(linkedBytes));
+#endif
                 if (c.Store == Gate.Gog)
                     text += string.Format(" DLC from your GOG install: {0}{1}.", markers == 0 ? "none" : markers.ToString(),
                         markersRemoved > 0 ? string.Format(" ({0} no longer in it removed)", markersRemoved) : "");
+#if UCU_MAC
+                if (copiedRetail > 0)
+                    text += string.Format(" {0} of BATTLETECH's files were copied, not cloned.", Size(copiedRetail));
+#else
                 if (copiedRetail > 0)
                     text += link
                         ? string.Format(" {0} of BATTLETECH's files (code, text and data files, and small files) were copied, so editing them never changes BATTLETECH.", Size(copiedRetail))
                         : string.Format(" This folder isn't on the same NTFS drive as BATTLETECH, so {0} of BATTLETECH's files were copied.", Size(copiedRetail));
+#endif
                 if (c.ManifestBytes != null)
                     text += " Files written match the public manifest, SHA-256 " + c.ManifestSha256 + ".";
                 return InstallResult.Installed;

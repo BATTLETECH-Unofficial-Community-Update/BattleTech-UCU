@@ -17,6 +17,7 @@ from urllib.parse import urlparse, parse_qs
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--port", type=int, default=18766)
+ap.add_argument("--counts", action="store_true", help="give assets a download_count (3 for the Windows installer and package.vault, 9 for the macOS kit and package-mac.vault)")
 args = ap.parse_args()
 base = f"http://127.0.0.1:{args.port}"
 lock = threading.Lock()
@@ -71,6 +72,8 @@ class H(BaseHTTPRequestHandler):
                     if r["id"] == int(m.group(2)):
                         a = {"id": nid(), "name": q["name"][0], "size": len(data), "state": "uploaded",
                              "digest": "sha256:" + hashlib.sha256(data).hexdigest()}
+                        if args.counts:
+                            a["download_count"] = {"BattleTechUCUSetup.exe": 3, "package.vault": 3, "package-mac.vault": 9, "ucu-mac-kit.zip": 9}.get(q["name"][0], 0)
                         r["assets"].append(a)
                         return self.send(201, a)
             return self.send(404, {"message": "no release"})

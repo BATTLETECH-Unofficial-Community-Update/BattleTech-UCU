@@ -182,6 +182,13 @@ namespace ReleaseGate
 
         static InstallResult Headless(string retail, string dest, string remote, bool dryRun, bool? mods)
         {
+            // A destination that holds another BATTLETECH game is refused before anything is read online or any server is asked.
+            string foreign = dest == null ? null : Installer.ForeignGame(dest);
+            if (foreign != null)
+            {
+                Console.Error.WriteLine(foreign);
+                return InstallResult.Failed;
+            }
             if (remote != null)
             {
                 Console.Out.WriteLine("Reading " + remote + "...");

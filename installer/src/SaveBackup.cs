@@ -28,12 +28,20 @@ namespace ReleaseGate
 
         public static string BackupRoot
         {
+#if UCU_MAC
+            // The macOS tool backs up before its first write, to the folder the volunteer kit uses (docs/keyserver-design.md).
+            get { return BackupRootOverride ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "UCU-test", "save-backup"); }
+#else
             get { return BackupRootOverride ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), FolderName); }
+#endif
         }
 
         static string SteamRoot()
         {
             if (SteamRootOverride != null) return SteamRootOverride;
+#if UCU_MAC
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Application Support", "Steam");
+#endif
             try
             {
                 using (RegistryKey k = Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam"))
@@ -101,7 +109,11 @@ namespace ReleaseGate
                 string[] all = Directory.GetFiles(remote, "*", SearchOption.AllDirectories);
                 long need = all.Sum(f => new FileInfo(f).Length);
                 Directory.CreateDirectory(part);
+#if UCU_MAC
+                long free = MacPlatform.FreeSpace(part);
+#else
                 long free = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(part))).AvailableFreeSpace;
+#endif
                 if (free < need + (need / 10) + 64L * 1048576)
                 {
                     Directory.Delete(part, true);
@@ -111,7 +123,11 @@ namespace ReleaseGate
                 using (var sha = SHA256.Create())
                     foreach (string f in all)
                     {
+#if UCU_MAC
+                        string rel = f.Substring(remote.Length).TrimStart('\\', '/');   // with a leading "/" Path.Combine would write to the root
+#else
                         string rel = f.Substring(remote.Length).TrimStart('\\');
+#endif
                         string to = Path.Combine(part, "remote", rel);
                         Directory.CreateDirectory(Path.GetDirectoryName(to));
                         File.Copy(f, to, false);

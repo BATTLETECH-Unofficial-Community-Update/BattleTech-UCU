@@ -131,7 +131,7 @@ $scratch = "$Root\retail-damaged"
 if (Test-Path $scratch) { Remove-Item -Recurse -Force $scratch }
 robocopy $Steam $scratch /E /MT:16 /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy of the retail install failed: $LASTEXITCODE" }
-$LASTEXITCODE = 0
+$global:LASTEXITCODE = 0   # robocopy's 1 to 7 are success; the global, so later exit codes are not hidden by a script-scope copy
 $flip = Join-Path $scratch $Shared
 $fs = [IO.File]::Open($flip, 'Open', 'ReadWrite')
 try { $fs.Position = $sharedOff1 + 500000; $b = $fs.ReadByte(); $fs.Position = $sharedOff1 + 500000; $fs.WriteByte(($b -bxor 0xFF)) }

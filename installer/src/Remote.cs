@@ -75,7 +75,11 @@ namespace ReleaseGate
         /// of the installer. The main repository's releases carry only the installer, for players. The installer goes here
         /// when no package sits beside it, or with --remote.
         /// </summary>
+#if UCU_MAC
+        public const string DefaultSource = "github:BATTLETECH-Unofficial-Community-Update/BattleTech-UCU-mac-data";
+#else
         public const string DefaultSource = "github:BATTLETECH-Unofficial-Community-Update/BattleTech-UCU-data";
+#endif
         public const string InstallerName = "BattleTechUCUSetup.exe";
         const string Agent = "BattleTechUCU-Setup";
         const long Coalesce = 1 << 20;  // read through a gap this size rather than start another request
@@ -122,6 +126,11 @@ namespace ReleaseGate
             p.Vault = Whole(p, vault, stop);
             p.NeedsNewerInstaller = !Gate.IsVault(p.Vault);
             if (p.NeedsNewerInstaller) return p;
+#if UCU_MAC
+            // A release of the other platform is refused here, before its manifest or parts are read and before any server is asked.
+            try { using (var head = new MemoryStream(p.Vault, false)) Gate.PeekLock(head); }
+            catch (PlatformException e) { throw new RemoteRefusedException("Release " + p.Version + ": " + e.Message + " This tool installs the macOS release only."); }
+#endif
             if (manifest != null) p.Manifest = Whole(p, manifest, stop);
             if (gogManifest != null) p.GogManifest = Whole(p, gogManifest, stop);
             Each(parts, a => Index(p, a, stop), stop);

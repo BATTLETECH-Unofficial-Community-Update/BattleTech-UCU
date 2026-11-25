@@ -51,11 +51,18 @@ namespace ReleaseGate
         }
 
         /// <summary>Retail data a mod can't have changed: BattleTech_Data/, less Managed/.</summary>
+#if UCU_MAC
+        static bool Indexed(string rel, Layout lay)
+        {
+            return rel.StartsWith(lay.Data, StringComparison.OrdinalIgnoreCase) && !rel.StartsWith(lay.Managed, StringComparison.OrdinalIgnoreCase);
+        }
+#else
         static bool Indexed(string rel)
         {
             return rel.StartsWith("BattleTech_Data/", StringComparison.OrdinalIgnoreCase)
                 && !rel.StartsWith("BattleTech_Data/Managed/", StringComparison.OrdinalIgnoreCase);
         }
+#endif
 
         static bool AllSame(byte[] b, int off)
         {
@@ -69,11 +76,18 @@ namespace ReleaseGate
         public static RetailIndex Build(string root)
         {
             root = Path.GetFullPath(root).TrimEnd('\\', '/');
+#if UCU_MAC
+            Layout lay = Layout.Of(root);
+#endif
             var found = new List<string>();
             foreach (string f in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
             {
                 string rel = f.Substring(root.Length + 1).Replace('\\', '/');
+#if UCU_MAC
+                if (!Indexed(rel, lay)) continue;
+#else
                 if (!Indexed(rel)) continue;
+#endif
                 long n = new FileInfo(f).Length;
                 if (n < MinIndexedFile || n > uint.MaxValue) continue;
                 found.Add(rel);

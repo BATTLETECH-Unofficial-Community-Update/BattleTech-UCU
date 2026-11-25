@@ -10,6 +10,7 @@ param(
     [string]$Steam,
     [string]$Gog,
     [string]$Bin,
+    [int]$SealedAnew = 3,   # blobs a --previous pack seals anew; a GOG install that shares no run with Steam needs a fourth: pass 4
     [string]$Level = 'BattleTech_Data/level10',
     [string]$Shared = 'BattleTech_Data/GI/level28/30/3014f4066de989b58ab61355a0881953.rsc.sse'
 )
@@ -79,7 +80,7 @@ Pack $v2 "$Root\pkgPrev" @('--key', $key, '--previous', "$Root\pkgA")
 Check "pack of v2 with --previous exit 0 (got $lastExit)" ($lastExit -eq 0)
 Check 'summary reports 5 files that kept their scan (own, shared, rand, small, steam_appid.txt)' ($last -match '5 files kept their scan')
 $anew = if ($last -match '(\d+) sealed anew') { [int]$Matches[1] } else { -1 }
-Check "summary counts blobs sealed anew (${anew}; change, the residual of new, added)" ($anew -eq 3)
+Check "summary counts blobs sealed anew (${anew}; change, the residual of new, added)" ($anew -eq $SealedAnew)
 $a = Listing "$Root\pkgFull"; $b = Listing "$Root\pkgPrev"
 Check "data/ equals a full pack: $($a.Count) blobs, same names and bytes" ($a.Count -gt 0 -and (-not (Compare-Object $a $b)))
 Check 'public manifest equals a full pack' ((Sha "$Root\pkgFull\ucu-manifest.tsv") -eq (Sha "$Root\pkgPrev\ucu-manifest.tsv"))
@@ -100,7 +101,7 @@ foreach ($s in @(@('steam', $Steam), @('gog', $Gog))) {
 
 # A damaged old blob is never linked in: it is sealed anew and the package still equals a full pack.
 robocopy "$Root\pkgA" "$Root\pkgDamaged" /E /NFL /NDL /NJH /NJS /NP | Out-Null
-$LASTEXITCODE = 0
+$global:LASTEXITCODE = 0   # robocopy's 1 to 7 are success; the global, so later exit codes are not hidden by a script-scope copy
 $victim = Get-ChildItem "$Root\pkgDamaged\data" | Sort-Object Length -Descending | Select-Object -First 1
 $fs = [IO.File]::Open($victim.FullName, 'Open', 'ReadWrite'); $fs.Position = 100; $x = $fs.ReadByte(); $fs.Position = 100; $fs.WriteByte(($x -bxor 0xFF)); $fs.Dispose()
 Pack $v2 "$Root\pkgPrevDamaged" @('--key', $key, '--previous', "$Root\pkgDamaged")

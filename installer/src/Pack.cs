@@ -7,6 +7,13 @@
 //                                           the retail files whose GOG bytes differ (GOG's own copy where gog-accept.tsv lists it,
 //                                           else Steam's packed) plus GOG's Galaxy natives; writes ucu-manifest-gog.tsv
 //   ReleasePack --fingerprint <retail dir>     prints a retail install's fingerprint, for adding a slot
+//   ReleasePack --check-report <retail dir> <report>   (macOS build of this tool) compares a retail install's fingerprint with a
+//                                           hash-install report and prints "parts n of 19, fingerprint equal: yes|no", never a digest
+//   macOS packages (the macOS build of this tool, UCU_MAC): a --player that holds BattleTech.app is packed with the --retail Mac
+//               install of the same layout, always locked (--master-secret and --unlock-url), as package-mac.vault (vault BTU6GAM4),
+//               ucu-manifest-mac.tsv and data/*.pak; no installer is copied. Never packs GOG. It takes its own content key,
+//               --mac-key <file> in place of --key (key separation): a file the packer makes, "mac:" and the hex; a Windows key
+//               file is refused, so the key that opens the Windows data is never the one a Mac owner's files-only unlock returns.
 //               [--previous <package folder>]   reuses that package's work: a file whose SHA-256 is unchanged keeps its pieces and its
 //                                           blob (hard-linked, or copied across volumes), so only new and changed files are scanned
 //                                           and sealed. The result is the same package a full pack gives. Needs a package made by a
@@ -184,7 +191,18 @@ namespace ReleaseGate
                     Console.WriteLine(Gate.Hex(Gate.Fingerprint(a[1])));
                     return 0;
                 }
+#if UCU_MAC
+                if (a.Length == 3 && a[0] == "--check-report")
+                {
+                    bool equal;
+                    Console.WriteLine(Layout.Of(a[1]).CheckReport(a[1], a[2], out equal));
+                    return equal ? 0 : 1;
+                }
+#endif
                 string player = null, retail = null, output = null, keyFile = null, masterFile = null, unlockUrl = null, unity = null, gog = null, previous = null;
+#if UCU_MAC
+                string macKey = null;
+#endif
                 var extra = new List<byte[]>();
                 bool newKey = a.Contains("--new-key");
                 if (newKey) a = a.Where(x => x != "--new-key").ToArray();
@@ -194,6 +212,9 @@ namespace ReleaseGate
                     else if (a[i] == "--retail") retail = a[i + 1];
                     else if (a[i] == "--out") output = a[i + 1];
                     else if (a[i] == "--key") keyFile = a[i + 1];
+#if UCU_MAC
+                    else if (a[i] == "--mac-key") macKey = a[i + 1];
+#endif
                     else if (a[i] == "--extra-fingerprint") extra.Add(FromHex(a[i + 1]));
                     else if (a[i] == "--master-secret") masterFile = a[i + 1];
                     else if (a[i] == "--unlock-url") unlockUrl = a[i + 1];
@@ -202,12 +223,26 @@ namespace ReleaseGate
                     else if (a[i] == "--previous") previous = a[i + 1];
                     else throw new ArgumentException("Unknown option " + a[i]);
                 }
+#if UCU_MAC
+                bool macPlayer = player != null && Directory.Exists(player) && Layout.Of(Path.GetFullPath(player)) == Layout.Mac;
+                if (macPlayer)
+                {
+                    if (keyFile != null) throw new ArgumentException("A macOS package has its own content key: give --mac-key <file>, not --key. A Windows key file is never used for it.");
+                    if (macKey == null) throw new ArgumentException("Need --mac-key <file>: the macOS package's own content key (the packer creates the file on first use).");
+                    keyFile = macKey;
+                }
+                else if (macKey != null) throw new ArgumentException("--mac-key is for a macOS player (a folder that holds BattleTech.app).");
+#endif
                 if (player == null || retail == null || output == null || keyFile == null) throw new ArgumentException("Need --player, --retail, --key and --out");
                 if (Directory.Exists(output)) throw new IOException("Output exists: " + output);
                 if ((masterFile == null) != (unlockUrl == null)) throw new ArgumentException("--master-secret and --unlock-url go together");
                 if (newKey && previous == null) throw new ArgumentException("--new-key goes with --previous");
                 byte[] master = masterFile == null ? null : LoadMaster(masterFile, output);
+#if UCU_MAC
+                PackResult r = Run(player, retail, output, LoadKey(keyFile, output, Console.WriteLine, macPlayer), extra, new PackProgress(), CancellationToken.None, master, unlockUrl, unity, gog, previous, newKey);
+#else
                 PackResult r = Run(player, retail, output, LoadKey(keyFile, output, Console.WriteLine), extra, new PackProgress(), CancellationToken.None, master, unlockUrl, unity, gog, previous, newKey);
+#endif
                 Console.WriteLine(r.Summary);
                 return 0;
             }
@@ -218,6 +253,14 @@ namespace ReleaseGate
             }
         }
 
+#if UCU_MAC
+        /// <summary>The rows of the public manifest: every packed file but the one a macOS package keeps out of it.</summary>
+        static IEnumerable<ManifestRow> Listed(IEnumerable<ManifestRow> rows)
+        {
+            return rows.Where(r => !PublicManifest.IsHidden(r.Path));
+        }
+
+#endif
         public static byte[] FromHex(string s)
         {
             var b = new byte[s.Length / 2];
@@ -225,6 +268,34 @@ namespace ReleaseGate
             return b;
         }
 
+#if UCU_MAC
+        /// <summary>
+        /// A macOS package's own content key: a file of "mac:" and 64 hex digits, created on first use. A file in the Windows format
+        /// (the hex alone) is refused, and a Windows packer can't read this one, so one key never serves both platforms.
+        /// </summary>
+        public static byte[] LoadKey(string keyFile, string output, Action<string> log, bool mac)
+        {
+            if (!mac) return LoadKey(keyFile, output, log);
+            keyFile = Path.GetFullPath(keyFile);
+            if (keyFile.StartsWith(Path.GetFullPath(output).TrimEnd('\\', '/') + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("Keep the key file outside the package");
+            const string Tag = "mac:";
+            if (File.Exists(keyFile))
+            {
+                string text = File.ReadAllText(keyFile).Trim();
+                if (!text.StartsWith(Tag, StringComparison.Ordinal))
+                    throw new ArgumentException("That key file isn't a macOS content key (it is in the Windows format): a macOS package has its own key. Give a new path with --mac-key and the packer creates it.");
+                byte[] k = FromHex(text.Substring(Tag.Length));
+                if (k.Length != 32) throw new InvalidDataException("The key file doesn't hold a 32-byte hex key: " + keyFile);
+                return k;
+            }
+            byte[] made = Gate.Random(32);
+            File.WriteAllText(keyFile, Tag + Gate.Hex(made));
+            log("Created a new macOS content key at " + keyFile + ". Keep it for every later macOS release; it is not the Windows key.");
+            return made;
+        }
+
+#endif
         public static byte[] LoadKey(string keyFile, string output, Action<string> log)
         {
             keyFile = Path.GetFullPath(keyFile);
@@ -268,6 +339,9 @@ namespace ReleaseGate
             rel = rel.Replace('\\', '/');
             // ModSupport/ holds the mod loader's files, inert there (Doorstop only reads files beside the exe). The names below are
             // skipped at the top level, where a development player keeps its probe loader, but ship inside this folder.
+#if UCU_MAC
+            if (Gate.Platform != null && (Layout.IsMacJunk(rel) || rel.StartsWith(Layout.Mac.AssetsSkip + "/", StringComparison.OrdinalIgnoreCase))) return false;
+#endif
             if (rel.StartsWith("ModSupport/", StringComparison.OrdinalIgnoreCase)) return true;
             if (SkipDirs.Any(d => rel.StartsWith(d + "/", StringComparison.OrdinalIgnoreCase))) return false;
             return !SkipFiles.Contains(Path.GetFileName(rel), StringComparer.OrdinalIgnoreCase);
@@ -276,6 +350,16 @@ namespace ReleaseGate
         public static PackResult Run(string player, string retail, string output, byte[] key, List<byte[]> extra, PackProgress progress, CancellationToken stop,
             byte[] masterSecret = null, string unlockUrl = null, string unity = null, string gog = null, string previousPackage = null, bool newKey = false)
         {
+#if UCU_MAC
+            // The player's layout decides the platform; the retail install must be the same one, and everything that follows
+            // (vault magic, file names, fingerprint, retail paths) follows Gate.Use.
+            Layout lay = Layout.Of(Path.GetFullPath(player));
+            if (Layout.Of(Path.GetFullPath(retail)) != lay)
+                throw new ArgumentException("The player is a " + lay.Name + " build but --retail is a " + Layout.Of(Path.GetFullPath(retail)).Name + " install: pack a player with the retail install of its own platform.");
+            Gate.Use(lay.Platform);
+            if (lay.Platform != null && gog != null) throw new ArgumentException("--gog doesn't apply to a macOS package.");
+            if (lay.Platform != null && (masterSecret == null || unlockUrl == null)) throw new ArgumentException("A macOS package is always locked: give --master-secret and --unlock-url.");
+#endif
             if (gog != null)
             {
                 gog = Path.GetFullPath(gog);
@@ -286,14 +370,23 @@ namespace ReleaseGate
             retail = Path.GetFullPath(retail);
             // A package is never written over another: the old one's blobs, vault and installer would mix with the new.
             if (Directory.Exists(output)) throw new OutputExistsException(Path.GetFullPath(output));
+#if UCU_MAC
+            if (!File.Exists(Path.Combine(player, lay.Exe))) throw new FileNotFoundException("The player has no " + lay.Exe + ". See Package a release in the README.");
+#else
             if (!File.Exists(Path.Combine(player, "BattleTech.exe"))) throw new FileNotFoundException("The player has no BattleTech.exe. See Package a release in the README.");
+#endif
             if (!Gate.HasAppId(player))
                 throw new FileNotFoundException("The player doesn't set the Steam app ID in its code (it predates patch 101) and has no steam_appid.txt holding 637090. See Package a release in the README.");
             // Galaxy64.dll beside the exe turns on the player's GOG mode, and goggame-*.info files are the GOG user's own DLC
             // markers: a GOG install gets them from the user's GOG folder, so a player carrying them would put a Steam install
             // in GOG mode.
+#if UCU_MAC
+            string gogOnly = lay.Platform != null ? null : new[] { "Galaxy64.dll", "GalaxyCSharpGlue.dll" }.Where(n => File.Exists(Path.Combine(player, n)))
+                .Concat(Directory.EnumerateFiles(player, "goggame-*", SearchOption.TopDirectoryOnly).Select(Path.GetFileName)).FirstOrDefault();
+#else
             string gogOnly = new[] { "Galaxy64.dll", "GalaxyCSharpGlue.dll" }.Where(n => File.Exists(Path.Combine(player, n)))
                 .Concat(Directory.EnumerateFiles(player, "goggame-*", SearchOption.TopDirectoryOnly).Select(Path.GetFileName)).FirstOrDefault();
+#endif
             if (gogOnly != null)
                 throw new ArgumentException("The player carries " + gogOnly + " beside BattleTech.exe. GOG installs copy that from the user's GOG install; remove it from the player (a Steam install would start in GOG mode).");
             if (Gate.StoreOf(retail) != Gate.Steam) throw new ArgumentException("--retail must be the Steam install: its files are what a Steam install copies. Give a GOG install with --gog.");
@@ -339,6 +432,15 @@ namespace ReleaseGate
                 string rel = Rel(player, f);
                 if (Ships(rel)) files.Add(rel);
             }
+#if UCU_MAC
+            if (lay.Platform != null)
+            {
+                // The installer writes the player's own bytes and never signs: its seal must hold as built.
+                int hashed, nested;
+                List<string> bad = CodeResources.Check(Path.Combine(player, "BattleTech.app", "Contents"), out hashed, out nested, r => Ships("BattleTech.app/Contents/" + r));
+                if (bad.Count > 0) throw new InvalidDataException("The player's " + PublicManifest.MacHidden + " doesn't match its files: " + string.Join("; ", bad));
+            }
+#endif
             progress.Total = files.Sum(r => new FileInfo(Path.Combine(player, r)).Length);
 
             Directory.CreateDirectory(Path.Combine(output, "data"));
@@ -385,7 +487,11 @@ namespace ReleaseGate
                 var e = new Entry { Path = rel, Size = size, Blob = "", BlobSha256 = "", RetailPath = "", Sha256 = sha };
                 List<string> candidates;
                 if (!NeverFromRetail.Contains(Path.GetFileName(rel), StringComparer.OrdinalIgnoreCase)
+#if UCU_MAC
+                    && !rel.Replace('\\', '/').StartsWith(lay.Settings, StringComparison.OrdinalIgnoreCase)
+#else
                     && !rel.Replace('\\', '/').StartsWith(PlayerSettings, StringComparison.OrdinalIgnoreCase)
+#endif
                     && index.TryGetValue(Path.GetFileName(rel) + "|" + size, out candidates))
                     foreach (string c in candidates)
                         if (Gate.HashFile(Path.Combine(retail, c)) == sha) { e.RetailPath = c; break; }
@@ -465,16 +571,29 @@ namespace ReleaseGate
             byte[] share = lk == null ? null : Gate.Share(masterSecret, lk.ReleaseId);
             Gate.WriteVault(vault, key, slots, entries.ToList(), lk, share, stores);
             CheckVault(vault, key, slots, entries, lk, share, stores);
+#if UCU_MAC
+            string setup = lay.Platform != null ? null : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "BattleTechUCUSetup.exe");
+            if (setup != null && !File.Exists(setup)) throw new FileNotFoundException("Keep BattleTechUCUSetup.exe beside ReleasePack.exe", setup);
+            byte[] manifest = PublicManifest.Write(Listed(rows));
+#else
             string setup = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "BattleTechUCUSetup.exe");
             if (!File.Exists(setup)) throw new FileNotFoundException("Keep BattleTechUCUSetup.exe beside ReleasePack.exe", setup);
             byte[] manifest = PublicManifest.Write(rows);
+#endif
             File.WriteAllBytes(Path.Combine(output, PublicManifest.FileName), manifest);
             byte[] gogManifest = gogRows == null ? null : PublicManifest.Write(gogRows);
             if (gogManifest != null) File.WriteAllBytes(Path.Combine(output, PublicManifest.GogFileName), gogManifest);
+#if UCU_MAC
+            if (setup != null)
+            {
+#endif
             File.Copy(setup, Path.Combine(output, "BattleTechUCUSetup.exe"));
             // The itch app shows "play" as its main Launch button, so players start the installer from the itch app.
             File.WriteAllText(Path.Combine(output, ".itch.toml"),
                 "[[actions]]\nname = \"play\"\npath = \"BattleTechUCUSetup.exe\"\n");
+#if UCU_MAC
+            }
+#endif
             var result = new PackResult
             {
                 Files = files.Count,
@@ -492,7 +611,11 @@ namespace ReleaseGate
                 ManifestSha256 = PublicManifest.Sha256Of(manifest),
                 GogManifestSha256 = gogManifest == null ? null : PublicManifest.Sha256Of(gogManifest),
             };
+#if UCU_MAC
+            string origins = string.Join(", ", Listed(rows).GroupBy(x => x.Origin).OrderBy(g => g.Key, StringComparer.Ordinal)
+#else
             string origins = string.Join(", ", rows.GroupBy(x => x.Origin).OrderBy(g => g.Key, StringComparer.Ordinal)
+#endif
                 .Select(g => string.Format("{0} {1} ({2} exec)", g.Key, g.Count(), g.Count(x => x.Exec))));
             result.Summary = string.Format("files {0}; encrypted {1}, {2:F2} GiB in {3} blobs, {4:F2} GiB packed, largest blob {5:F2} GiB; copied from retail at install {6}, {7:F2} GiB; {8:F0} s",
                 result.Files, result.Encrypted, sealedBytes / 1073741824.0, result.Blobs, blobBytes / 1073741824.0, largest / 1073741824.0,

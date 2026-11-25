@@ -512,6 +512,12 @@ namespace ReleaseGate
                 return;
             }
             string dest = DestFull();
+            string foreign = Installer.ForeignGame(dest);
+            if (foreign != null)
+            {
+                Show(_destNote, foreign, Bad);
+                return;
+            }
             // A folder this installer filled before is updated in place, without asking.
             if (Directory.Exists(dest) && Directory.GetFileSystemEntries(dest).Length > 0 && !File.Exists(Path.Combine(dest, Installer.RecordName)) &&
                 MessageBox.Show(this, "That folder isn't empty. Files with the same names will be replaced. Continue?", Title,

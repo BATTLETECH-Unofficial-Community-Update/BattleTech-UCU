@@ -44,11 +44,11 @@ This project is a personal, non-commercial effort and is not affiliated with Par
 ## Current Release
 
 <!-- release-version -->
-**Version 2.3.0-4B** (more simply: UCU Beta 4). ([Release Notes](CHANGELOG.md)). Version definitions have to stick to the retail numbering system, but we assign our own meaning to it:
+**Version 2.3.1-4B** (more simply: UCU Beta 4.1). ([Release Notes](CHANGELOG.md)). Version definitions have to stick to the retail numbering system, but we assign our own meaning to it:
 
 - **2**: Major release: 2.0 is defined as Unity 6-built feature parity with retail and its DLC along with bugfixes, optimizations, and the multiplayer changes below.
 - **3**: Minor release with new features or requirements, non-breaking changes backwards compatible within the major release line. A new minor release should indicate a significant fix or new feature.
-- **0**: Patchlevel: Bugfixes or minor corrections to the previous minor release.
+- **1**: Patchlevel: Bugfixes or minor corrections to the previous minor release.
 - **4B**: Simplified release indicator: (A)lpha/(B)eta/(R)elease and the number ('Beta 4' in this example)
 <!-- /release-version -->
 
@@ -71,12 +71,12 @@ MacOS is harder for two reasons:
 
 ## What's different from the 2018 retail game (and what isn't)
 
-- **Campaign/Career multiplayer.** Retail multiplayer is skirmish-only and relied on multiplayer servers long since sunset (without mods). In 2.0, career and campaign mode support the host inviting up to three other players and assigning permissions for each guest (mech bay, store, hiring, barracks, etc). Everyone sees the Argo, and each player controls the 'Mechs assigned to them. On a mission with fewer 'Mechs than players, anyone not assigned to a 'mech is an observer. On Steam and GOG installs the host can invite friends from the game (GOG co-op is new; see Known Issues), and the host's *Speed up combat* setting and the fast-forward key now work for everyone in a co-op contract.
+- **Campaign/Career multiplayer.** Retail multiplayer is skirmish-only and relied on multiplayer servers long since sunset (without mods). In 2.x, career and campaign mode support the host inviting up to three other players and assigning permissions for each guest (mech bay, store, hiring, barracks, etc). Everyone sees the Argo, and each player controls the 'Mechs assigned to them. On a mission with fewer 'Mechs than players, anyone not assigned to a 'mech is an observer. On Steam and GOG installs the host can invite friends from the game (GOG co-op is new; see Known Issues), and the host's *Speed up combat* setting and the fast-forward key now work for everyone in a co-op contract.
 - **Faster loading.** A career save loads in about 17 seconds, down from 29 to 36 in our tests. A heavily modded save loads about a fifth faster.
 - **Retail bugs fixed.** Including multiplayer deadlocks, mortar strikes that lost their targets or fired twice on other players' screens, and more.
-- **Direct3D 12 with multicore rendering is an option.** DirectX 11 is the default until this has had more testing. In the launcher's *Settings* tab, *DirectX 12 with multi-core rendering* starts the game on Direct3D 12 and spreads the rendering work across several CPU cores; starting the game with `-force-d3d12` by hand gives Direct3D 12 on one rendering thread. In one measurement, multi-core rendering was faster than DirectX 11 and plain Direct3D 12 was about level with it. The [CHANGELOG](CHANGELOG.md) has the figures.
-- **Mods still work.** ModTek and Harmony mods run with no rebuild. BTA and BEX:T are supported (RogueTech pending)
-- **Paradox Online Services.** Paradox accounts work as in retail. Some analysis telemetry (app launch, hardware info) is sent to Paradox in retail but some of it was being rejected. We kept what was being accepted.
+- **Direct3D 12 with multicore rendering.** DirectX 11 is the default until this has had more testing. In the launcher's *Settings* tab, *DirectX 12 with multi-core rendering* starts the game on Direct3D 12 and spreads the rendering work across several CPU cores; starting the game with `-force-d3d12` by hand gives Direct3D 12 on one rendering thread. In one measurement, multi-core rendering was faster than DirectX 11 and plain Direct3D 12 was about level with it. The [CHANGELOG](CHANGELOG.md) has the figures.
+- **Mods still work.** ModTek and Harmony mods run with no rebuild. BTA, BEX:T, Hyades Rim, and xAI are supported (RogueTech pending)
+- **Paradox Online Services.** Paradox accounts work as in retail. Some analysis telemetry (app launch, hardware info) is sent to Paradox in retail; we disabled the telemetry Paradox was rejecting.
 
 See the [CHANGELOG](CHANGELOG.md) for the full list.
 
@@ -96,13 +96,11 @@ Updates to BT-UCU will update the installed folder in place. To uninstall, simpl
 
 ## Mod packs on UCU
 
-From 2.1.0-2B, UCU can run mods through ModTek. The big mod packs have their own installers, which need retail BATTLETECH 1.9.1 and won't install onto UCU, so you install a pack on retail as usual and then link it across from UCU's launcher.
+From 2.1.0-2B, UCU runs mods through ModTek. The big mod packs have their own installers, which need retail BATTLETECH 1.9.1 and won't install onto UCU, so you install a pack on retail as usual and then link it across from UCU's launcher.
 
 ![Mod packs: BTAU, BEX:T and Hyades Rim are supported with a check mark; RogueTech is pending.](docs/mod-packs.svg)
 
-UCU supports BattleTech Advanced (BTAU) and BattleTech Extended: Tactics (BEX:T) and both have had a surface-level of testing in that they load into the Argo and combat without errors. RogueTech support is pending: it loads part of the way on UCU, but its own launcher is required to run it (see the table). At this time, if you encounter an issue with any of the modpacks, report it here rather than to the modpack maintainers, unless you can reproduce the same issue without UCU.
-
-UCU also supports Hyades Rim. It needs no changes on UCU's side: it starts a career in the Hyades Rim and loads into combat without errors. Hyades Rim installs into your retail BATTLETECH folder, so in the launcher's *Mods* tab choose *Another ModTek v4 pack* and pick that folder.
+UCU supports BattleTech Advanced (BTAU), BattleTech Extended: Tactics (BEX:T), Hyades Rim, and xAI. RogueTech support is pending: it loads part of the way on UCU, but its own launcher is required to run it (see the table). If you encounter an issue with any of the modpacks, report it here rather than to the modpack maintainers, unless you can reproduce the same issue without UCU.
 
 Here is where each pack stands today (to the best of our knowledge -- please report an issue if you find otherwise!)
 
@@ -159,17 +157,13 @@ The below is a brief statement about AI usage in this project. For more detail, 
 
 There is an avalanche of AI slop projects. Built into the DNA of our project's mission is that we retain the discipline and focus to avoid that label. On the one hand, this project represents exactly the kind of effort that wasn't viable before AI; there's not enough money or other incentive for any of the commercial entities concerned to have undertaken it. But just because you can doesn't mean you should. 
 
-![AI Slop-O-Meter: lines of code UCU adds and removes, as a share of retail's code, with new features counted apart from patches to retail's code.](docs/code-delta.svg)
-
 ![Bugs We Shipped: regressions and defects found late, by the release each arrived in, with retail's and mods' own bugs counted apart.](docs/bugs-shipped.svg)
 
-The Slop-O-Meter counts how much we changed. Bugs We Shipped counts what those changes broke. Every issue players report is traced to its cause and to the release it arrived in. A regression is a release breaking something that worked before. A bug found late was there from the start, in a combination we hadn't tested. Bugs the original game or a mod also has are shown apart.
-
-Retail's own code is over a million lines.  We didn't want to fix what wasn't broke. 'Patches' counts changes we've made to retail code to bring it forward into Unity 6, fix a bug, or improve performance. New features are limited to multiplayer career/campaign mode.
+Bugs We Shipped counts what our changes broke. Every issue players report is traced to its cause and to the release it arrived in. A regression indicates that the release broke something that worked before. 'Found late' means we didn't become aware of it until after the release (e.g. a modpack combination we hadn't tested).
 
 I am a developer with more than two decades of experience, but the folks at Harebrained and Paradox have more understanding of how these things work in their pinky fingers than I do. I'm a generalist but not a Unity developer, and I had to develop a rudimentary enough understanding of the Unity engine to know how to direct the AI and to evaluate whether it could achieve parity with a very mature, battle-tested retail release. Progress was very slow at first, but once we were able to get the UI off the ground, the rest followed.
 
-AI made this project possible. AI can also ruin it. That's why we maintain the slop-o-meter and why the majority of our effort goes into bugfixes, fidelity with the original game, and the narrow scope of 'new stuff' that we've accepted. Battletech has a superb modding community and it's the folks over at [BTA](https://www.bta3062.com/) and [RogueTech](https://roguetech.fandom.com/) and elsewhere who keep interest in this title alive. 
+AI made this project possible. AI can also ruin it. That's why we count the bugs we ship and why the majority of our effort goes into bugfixes, fidelity with the original game, and the narrow scope of 'new stuff' that we've accepted. Battletech has a superb modding community and it's the folks over at [BTA](https://www.bta3062.com/) and [RogueTech](https://roguetech.fandom.com/) and elsewhere who keep interest in this title alive. 
 
 Nobody wants new releases with breaking changes or significant alterations to features every couple of days; but we wouldn't be here at all but for AI labor. If you disagree, that's cool, I respect your artisanal cheese-making and butter-churning! But in our house, we had giant robots to blow up and that was only going to happen with some help.
 
@@ -190,6 +184,10 @@ Places where UCU means to match retail but doesn't quite yet. Deliberate changes
 - **Portraits** read slightly darker than retail, mostly on the shaded side of the face, and one preset's hair tips look cyan.
 - **Co-op on GOG** is new and has not been tried between two GOG accounts. A GOG host gets a friends-only GOG Galaxy lobby with INVITE FRIENDS, and friends join with JOIN from their GOG Galaxy friends list; LAN and Direct Address work as before. If you try it, please tell us what happened and attach both players' `Player.log`. For the log to help, open `BattleTech_Data/StreamingAssets/data/debug/settings.json` in your install and add `{ "k": "Network.Core", "v": "Log" }` to the `loggerLevels` list.
 - **Co-op weapon modes with three or more players:** a third player's weapon-mode click (CustomAmmoCategories) made while another player's game is loading is dropped, and the next check resyncs that player.
+- **BEX:T co-op, 'Mech parts:** after a reload, a 'Mech whose parts BEX:T swapped can list them in a different order on each player, so critical hits on it may differ.
+- **BEX:T co-op, destroyed 'Mechs:** after a resync, a destroyed 'Mech can cause one further resynchronization.
+- **BEX:T co-op, MASC sprints:** a sprint with MASC can make the session resynchronize.
+- **BEX:T co-op:** after a resynchronization, a guest may fail to play an enemy melee and resynchronize again (seen only in test runs).
 - **Memory in long sessions** ([issue #22](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/22)): Memory use grows during a long session, about 1.5 GB above the original game after three missions and then about 200 MB per mission (around 9 GB after twelve). The original game also grows as you play. Restarting the game returns the memory. We are still working on it.
 
 ## Known Issues (Modders)

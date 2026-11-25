@@ -22,7 +22,7 @@ namespace ReleaseGate
         public byte[] Key;          // null when refused
         public List<Entry> Entries;
         public string Problem;      // what to show the user; null when accepted
-        public bool CodeProblem;    // Problem came from unlocking a v3 package: the access code may need changing
+        public bool CodeProblem;    // Problem came from unlocking a locked package: the access code may need changing
         public byte[] ManifestBytes;    // the public manifest (PublicManifest.cs); null for a package packed before it existed
         public Dictionary<string, ManifestRow> Manifest;
         public string ManifestSha256 { get { return ManifestBytes == null ? null : PublicManifest.Sha256Of(ManifestBytes); } }
@@ -158,7 +158,7 @@ namespace ReleaseGate
             }
         }
 
-        /// <summary>The package's v3 lock, or null for a v2 package or none found.</summary>
+        /// <summary>The package's lock, or null for a package without one or none found.</summary>
         public static VaultLock PackageLock
         {
             get
@@ -232,6 +232,12 @@ namespace ReleaseGate
                     {
                         c.Problem = e.Message;
                         c.CodeProblem = true;
+                        return c;
+                    }
+                    // A vault in a format newer than this installer, or a damaged one. Online, the first is handed on instead.
+                    catch (InvalidDataException)
+                    {
+                        c.Problem = "This package can't be read. It may need a newer installer: run the BattleTechUCUSetup.exe that came with it, or download the package again.";
                         return c;
                     }
                 }
@@ -1047,7 +1053,7 @@ namespace ReleaseGate
                     {
                         var iv = new byte[16];
                         if (hashed.Read(iv, 0, 16) != 16) return false;
-                        using (var a = Gate.NewAes(Gate.FileKey(key, e.Blob, "file"), iv))
+                        using (var a = Gate.NewAes(Gate.BlobKey(key, e), iv))
                         using (var dec = new CryptoStream(hashed, a.CreateDecryptor(), CryptoStreamMode.Read))
                         using (var z = new DeflateStream(dec, CompressionMode.Decompress))
                         using (var o = new FileStream(dst, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 20))

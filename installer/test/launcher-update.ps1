@@ -1,6 +1,7 @@
 # The launcher's offer to replace itself (Remote.NewerLauncher, Launcher.ReplaceSelf), driven in its window by messages.
 # Builds launchers of three file versions whose release source is a local stand-in (srv.py), puts one in a synthetic install
-# as the launcher copy, and serves another. launcher.ini is kept and put back. Nothing else of the user's is touched.
+# as the launcher copy, and serves another. Those builds keep launcher.ini and the saved code under -Root; the user's own are
+# neither read nor written (checked).
 param(
     [Parameter(Mandatory)][string]$Root,
     [string]$Retail,
@@ -30,6 +31,13 @@ function Build([string]$version) {
     $n = $t -replace 'DefaultSource = "[^"]+"', "DefaultSource = `"$url`""
     if ($n -eq $t) { throw 'DefaultSource not found' }
     [IO.File]::WriteAllText($f, $n)
+    foreach ($s in 'Launcher.cs', 'Unlock.cs') {
+        $f = "$d\src\$s"
+        $t = [IO.File]::ReadAllText($f)
+        $n = $t.Replace('Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)', "@`"$Root\profile`"")
+        if ($n -eq $t) { throw "the settings folder wasn't found in $s" }
+        [IO.File]::WriteAllText($f, $n)
+    }
     & powershell -NoProfile -ExecutionPolicy Bypass -File "$d\build.ps1" | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "build $version failed" }
     "$d\bin\BattleTechUCUSetup.exe"
@@ -42,8 +50,8 @@ Copy-Item $v1 "$Root\pkg2\setup.exe"
 if (-not (Test-Path "$inst\.btu6-install.tsv")) { throw 'install failed' }
 
 $ini = "$env:APPDATA\BattleTechUCU\launcher.ini"
-$iniBytes = if (Test-Path $ini) { [IO.File]::ReadAllBytes($ini) } else { $null }
-if ($iniBytes -and [Text.Encoding]::UTF8.GetString($iniBytes) -match 'CheckOnStart=0') { throw 'launcher.ini has the update check off; turn it on for this test' }
+function IniState { if (Test-Path $ini) { (Hash $ini) + (Get-Item $ini).LastWriteTimeUtc.Ticks } else { 'none' } }
+$iniBefore = IniState
 
 $srv = $null
 function Serve([string]$installer, [string]$digest) {
@@ -79,6 +87,18 @@ function Dialog([int]$id, [int]$seconds) {
 }
 function Press([IntPtr]$d, [string]$name) { [Win]::Click(([Win]::Children($d) | Where-Object { [Win]::Text($_) -eq "&$name" } | Select-Object -First 1)) }
 function Kid([int]$id, [string]$text) { [Win]::Tops($id) | ForEach-Object { [Win]::Children($_) } | Where-Object { [Win]::Text($_) -like $text } | Select-Object -First 1 }
+# The button's accessible default action: a posted BM_CLICK does nothing while another window covers the button.
+Add-Type -TypeDefinition @'
+using System; using System.Reflection; using System.Runtime.InteropServices;
+public static class Acc {
+    [DllImport("oleacc.dll")] static extern int AccessibleObjectFromWindow(IntPtr h, uint id, ref Guid iid, [MarshalAs(UnmanagedType.IDispatch)] out object acc);
+    public static void Do(IntPtr h) {
+        var iid = new Guid("618736e0-3c3d-11cf-810c-00aa00389b71"); object a;
+        Marshal.ThrowExceptionForHR(AccessibleObjectFromWindow(h, 0xFFFFFFFC, ref iid, out a));
+        a.GetType().InvokeMember("accDoDefaultAction", BindingFlags.InvokeMethod, null, a, new object[] { 0 });
+    }
+}
+'@
 function Updated { (Hash $exe) -eq (Hash $v2) }
 function Fetched { [bool](Select-String -Path $log -Pattern 'BattleTechUCUSetup' -Quiet) }
 
@@ -104,7 +124,7 @@ try {
     Start-Sleep 2
     $b = Kid $p 'Update launcher'
     Check 'No: the launcher stays, with a button' ([bool]$d -and (Hash $exe) -eq (Hash $v1) -and [bool]$b -and [Win]::Visible($b))
-    if ($b) { [Win]::Click($b) }
+    if ($b) { [Acc]::Do($b) }
     $null = WaitFor { (Updated) -and @(Running).Count -eq 1 -and (Running)[0].Id -ne $p } 20
     Check 'the button updates and restarts' ((Updated) -and @(Running).Count -eq 1 -and (Running)[0].Id -ne $p)
 
@@ -148,9 +168,20 @@ try {
     Start-Sleep 3
     $lock.Dispose()
     Check 'an .old in use: said, launcher kept, no .new left' ([bool]$d -and [bool](Kid $p "The launcher couldn't be updated*") -and (Hash $exe) -eq (Hash $v1) -and -not (Test-Path "$exe.new"))
+
+    # A newer launcher that can't be started (an ARM64 mark on the x64 exe): what is said, and what is left to go back to.
+    $dead = "$Root\dead.exe"; $bytes = [IO.File]::ReadAllBytes($v2); $pe = [BitConverter]::ToInt32($bytes, 60)
+    $bytes[$pe + 4] = 0x64; $bytes[$pe + 5] = 0xAA; [IO.File]::WriteAllBytes($dead, $bytes)
+    Serve $dead
+    Start1 $v1
+    $d = Dialog $p 25
+    if ($d) { Press $d 'Yes' }
+    Start-Sleep 4
+    Check 'a new launcher that cannot start: said, the old one keeps running' ([bool]$d -and [bool](Kid $p "The launcher couldn't be updated*") -and @(Running).Count -eq 1 -and (Running)[0].Id -eq $p)
+    "note the launcher file is now $(if ((Hash $exe) -eq (Hash $dead)) { 'the one that cannot start' } elseif ((Hash $exe) -eq (Hash $v1)) { 'the old one' } else { 'something else' }), .old is $(if ((Test-Path "$exe.old") -and (Hash "$exe.old") -eq (Hash $v1)) { 'the working one' } else { 'not the working one' })"
 } finally {
     StopAll
     Unserve
-    if ($iniBytes) { [IO.File]::WriteAllBytes($ini, $iniBytes) } elseif (Test-Path $ini) { Remove-Item $ini }
 }
+Check 'the user''s launcher.ini is unchanged' ((IniState) -eq $iniBefore)
 if ($fail) { "FAILED $fail"; exit 1 } else { 'ALL OK'; exit 0 }

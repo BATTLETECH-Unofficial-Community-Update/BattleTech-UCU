@@ -811,6 +811,7 @@ namespace ReleaseGate
 
             // GitHub
             bool assetsReady = HasPackage(assets) && AssetParts(assets).Count > 0;
+            string assetsProblem = assetsReady ? PublishProblem(assets) : null;
             if (!hasPackage) Show(_assetsNote, "Pack a release, or choose an existing package folder on the Package tab.", Bad);
             else if (PartBytes() == 0) Show(_assetsNote, "Part size is in GiB, below 2 (GitHub's limit per file).", Bad);
             else if (assetsReady) Show(_assetsNote, string.Format("Prepared: {0} files, {1}. Prepare again to rebuild them from the package.", AssetFiles(assets).Count, Checks.Gib(AssetFiles(assets).Sum(f => new FileInfo(f).Length))), Good);
@@ -822,13 +823,13 @@ namespace ReleaseGate
             else if (!tokenOk) Show(_ghNote, "Choose the file holding your GitHub token with Contents read and write on both repositories; GitHub needs it to create releases " +
                 "and upload files. Players need no token. It is read for each request and never logged.", Bad);
             else if (_tag.Text.Trim().Length == 0) Show(_ghNote, "Enter a tag, such as v2.0.0-6A. GitHub creates it on the default branch when the release is published.", Bad);
-            else if (assetsReady && LockOf(assets) == null) Show(_ghNote, "This package needs no access code, and the release is public. Set the unlock server on the Package tab, pack again and prepare assets.", Bad);
+            else if (assetsProblem != null) Show(_ghNote, assetsProblem + " Then prepare assets again.", Bad);
             else Show(_ghNote, "Upload creates both releases with this tag, or adds to existing ones, and skips files already uploaded. package.vault goes last, " +
                 "so installers pass over the data release until it's complete. Publish both releases makes them public together, data first.", Good);
             _prepare.Enabled = !_busy && hasPackage && PartBytes() > 0 && assets.Length > 0 && Path.IsPathRooted(assets);
             _ghTest.Enabled = !_busy && assetsReady && _retailOk && dest.Length > 0;
             _ghCheck.Enabled = !_busy && repoOk && tokenOk;
-            _upload.Enabled = !_busy && repoOk && tokenOk && assetsReady && _tag.Text.Trim().Length > 0 && LockOf(assets) != null;
+            _upload.Enabled = !_busy && repoOk && tokenOk && assetsReady && _tag.Text.Trim().Length > 0 && assetsProblem == null;
             _publish.Enabled = !_busy && repoOk && tokenOk && _tag.Text.Trim().Length > 0;
             _counts.Enabled = !_busy && repoOk && tokenOk;
         }
@@ -1072,6 +1073,20 @@ namespace ReleaseGate
             catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is ArgumentException) { return null; }
         }
 
+        /// <summary>Why this folder's package must not go to a public release, or null. Only a locked v4 vault may (key separation).</summary>
+        internal static string PublishProblem(string dir)
+        {
+            var head = new byte[8];
+            try
+            {
+                using (var f = new FileStream(Path.Combine(dir ?? "", Gate.VaultName), FileMode.Open, FileAccess.Read, FileShare.Read)) f.Read(head, 0, head.Length);
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is ArgumentException) { return "The package's " + Gate.VaultName + " can't be read: " + e.Message; }
+            if (!Gate.IsV4Vault(head)) return "This package's vault isn't the current format (v4). Pack it again with the tools of this build.";
+            if (LockOf(dir) == null) return "This package needs no access code, and GitHub releases are public. Pack it with the unlock server.";
+            return null;
+        }
+
         /// <summary>
         /// Before a real push of a package that needs the unlock server: the live server must hand out this release's share
         /// for the test code (keys\test-code.txt beside the master secret), or players couldn't install it. Its Steam route
@@ -1278,6 +1293,12 @@ namespace ReleaseGate
         {
             string package = Path.GetFullPath(_package.Text.Trim()), outDir = Path.GetFullPath(_assets.Text.Trim()), label = Checks.SafeLabel(_version.Text.Trim());
             long partBytes = PartBytes();
+            string problem = PublishProblem(package);
+            if (problem != null)
+            {
+                MessageBox.Show(this, problem, Title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
             if (Directory.Exists(outDir) && Directory.EnumerateFileSystemEntries(outDir).Any())
             {
                 var ours = AssetFiles(outDir);
@@ -1376,10 +1397,10 @@ namespace ReleaseGate
             string mainName = _repo.Text.Trim(), dataName = _dataRepo.Text.Trim();
             string tag = _tag.Text.Trim(), name = _relName.Text.Trim(), body = _notes.Text, assets = Path.GetFullPath(_assets.Text.Trim());
             bool draft = _draft.Checked, pre = _pre.Checked;
-            if (LockOf(assets) == null)
+            string problem = PublishProblem(assets);
+            if (problem != null)
             {
-                MessageBox.Show(this, "This package needs no access code, and GitHub releases are public. Set the unlock server on the Package tab, " +
-                    "pack again and prepare assets.", Title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this, problem + " Then prepare assets again.", Title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
             // Data release: the parts, the installer (for an older installer that must hand on) and package.vault, last.

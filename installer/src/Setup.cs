@@ -14,11 +14,11 @@
 //                                                            published release. With or without the window
 //   --dry-run                                                with --remote and no window: says what would be downloaded
 //                                                            and written, and changes nothing
-//   --code <code> | --code-file <file>                       the access code a v3 package's unlock server checks; the
+//   --code <code> | --code-file <file>                       the access code a locked package's unlock server checks; the
 //                                                            window remembers the last accepted one for this Windows user.
 //                                                            Without one, the installer proves ownership through Steam
 //   --steam-app <id>                                         the Steam app the ownership ticket is for (tests: 480)
-//   --share-file <file>                                      unlocks a v3 package with its share, asking no server (tests)
+//   --share-file <file>                                      unlocks a locked package with its share, asking no server (tests)
 //   --unlock-url <url>                                       asks this unlock server instead of the package's (tests)
 //   --mods | --no-mods                                       turns mod support (ModTek) on or off with no window; without
 //                                                            either, the install keeps its last choice, on for a new one

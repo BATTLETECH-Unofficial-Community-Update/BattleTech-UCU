@@ -1,4 +1,4 @@
-// Asks the unlock server for a v3 release's share (docs/keyserver-design.md). With no access code, the installer proves
+// Asks the unlock server for a locked release's share (docs/keyserver-design.md). With no access code, the installer proves
 // ownership through Steam (SteamTicket.cs) and the server confirms the ticket with Valve; an access code is the manual
 // route for anyone Steam can't confirm. A GOG install has no ownership ticket a server outside GOG can check, so it unlocks
 // on its files (the maintainer, 2026-11-15): the installer sends an HMAC of the install's fingerprint bound to the release, and the

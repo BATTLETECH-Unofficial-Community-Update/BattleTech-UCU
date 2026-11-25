@@ -19,7 +19,7 @@ namespace ReleaseGate
 
         public Banner()
         {
-            _art = Image.FromStream(Assembly.GetExecutingAssembly().GetManifestResourceStream("banner.jpg"));
+            _art = new Bitmap(Image.FromStream(Assembly.GetExecutingAssembly().GetManifestResourceStream("banner.jpg")));
             Name = "Banner";
             Dock = DockStyle.Top;
             TabStop = false;
@@ -30,16 +30,28 @@ namespace ReleaseGate
 
         public override Size GetPreferredSize(Size proposed) { return new Size(0, Height); }
 
+        /// <summary>The tallest the banner grows (0: no limit), so a maximised window keeps its room for the tabs.</summary>
+        public int MaxHeight;
+
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
-            Height = Width * _art.Height / _art.Width;
+            int h = Width * _art.Height / _art.Width;
+            Height = MaxHeight > 0 ? Math.Min(h, MaxHeight) : h;
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            e.Graphics.DrawImage(_art, ClientRectangle);
+            // Capped: the art keeps its proportions at the capped height, centred, and the edge colours fill the sides.
+            int w = Math.Min(Width, Height * _art.Width / _art.Height), x = (Width - w) / 2;
+            if (x > 0)
+            {
+                var bmp = (Bitmap)_art;
+                using (var left = new SolidBrush(bmp.GetPixel(0, bmp.Height / 2))) e.Graphics.FillRectangle(left, 0, 0, x, Height);
+                using (var right = new SolidBrush(bmp.GetPixel(bmp.Width - 1, bmp.Height / 2))) e.Graphics.FillRectangle(right, x + w, 0, Width - x - w, Height);
+            }
+            e.Graphics.DrawImage(_art, new Rectangle(x, 0, w, Height));
         }
     }
 
@@ -112,8 +124,8 @@ namespace ReleaseGate
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
             Font = SystemFonts.MessageBoxFont;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
+            // Resizable (issue 46): the Install / Update tab is taller than the tab area at the opening size.
+            FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.CenterScreen;
             // The tabs set the size: their width, and the banner's height at that width above their height (Load below).
             ClientSize = new Size(660, 640);
@@ -132,7 +144,7 @@ namespace ReleaseGate
             t.Controls.Add(intro);
             t.SetColumnSpan(intro, 2);
             AddRow(t, "BATTLETECH folder", _retail, _browseRetail, _retailNote);
-            // A v3 package is unlocked by the unlock server: through Steam, or for an access code (docs/keyserver-design.md).
+            // A locked package is unlocked by the unlock server: through Steam, or for an access code (docs/keyserver-design.md).
             foreach (Control c in new Control[] { _codeCaption, _code, _codeNote })
             {
                 t.Controls.Add(c);
@@ -156,7 +168,19 @@ namespace ReleaseGate
             Controls.Add(BuildTabs(t));
             var banner = new Banner();
             Controls.Add(banner);
-            Load += (s, e) => ClientSize = new Size(ClientSize.Width, banner.Height + _tabs.Height);
+            Load += (s, e) =>
+            {
+                // Open tall enough for the Install / Update page, as far as the screen allows (never below the tabs' own height).
+                Control page = _installTab.Controls[0];
+                int tabChrome = _tabs.Height - _installTab.ClientSize.Height;
+                // The notes under the fields are empty now and fill in with the first check (up to a few wrapped lines).
+                int tabsHeight = Math.Max(_tabs.Height, page.PreferredSize.Height + tabChrome + 5 * Font.Height);
+                int room = Screen.FromControl(this).WorkingArea.Height - (Height - ClientSize.Height) - banner.Height;
+                banner.MaxHeight = banner.Height;
+                ClientSize = new Size(ClientSize.Width, banner.Height + Math.Min(tabsHeight, Math.Max(_tabs.Height, room)));
+                _tabs.Dock = DockStyle.Fill;
+                MinimumSize = Size;
+            };
             AcceptButton = _go;
 
             _retail.TextChanged += (s, e) => QueueCheck();

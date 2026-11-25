@@ -1,7 +1,8 @@
 # Verify install must make a repair replace what it found. An installed file is damaged in place with its size and write time
 # kept, which the install record alone can't see: Verify names it, and the next run must rewrite that file and no other.
 # Uses make.ps1's v1 and v2. -Setup is the installer under test; -Before runs an older one through the same steps and only
-# reports (the control: its repair leaves the file damaged).
+# reports (the control: its repair leaves the file damaged). Its build's ReleasePack.exe must sit beside it: an older
+# installer may not read what this build packs, so it gets its own set.
 param(
     [Parameter(Mandatory)][string]$Root,
     [string]$Retail,
@@ -13,7 +14,9 @@ $ErrorActionPreference = 'Stop'
 if (-not $Retail) { $Retail = Get-UcuPath retail_install -Required }
 if (-not $Setup) { $Setup = Join-Path $UcuRepo 'tools\release-gate\bin\BattleTechUCUSetup.exe' }
 if (Test-Path $Root) { throw "Root exists: $Root" }
+if ($Before -and -not (Test-Path (Join-Path (Split-Path $Before) 'ReleasePack.exe'))) { throw "-Before needs its own build's ReleasePack.exe beside it, to pack the set it is run on: $Before" }
 & (Join-Path $PSScriptRoot 'make.ps1') -Root $Root -Retail $Retail | Out-Null
+if ($Before) { & (Join-Path $PSScriptRoot 'make.ps1') -Root "$Root\before-set" -Retail $Retail -Bin (Split-Path $Before) | Out-Null }
 New-Item -ItemType Directory -Force "$Root\no-steam" | Out-Null
 # An exe under tools/ can't write on the maintainer's workstation, and Verify writes the record: run copies from the root.
 Copy-Item $Setup "$Root\tools\under-test.exe"; $Setup = "$Root\tools\under-test.exe"
@@ -40,9 +43,9 @@ function Damage([string]$p) {
 $rel = 'BattleTech_Data\b.bin'; $want = Hash "$Root\p2\$rel"
 if ($Before) {
     $d = "$Root\before"
-    Run $Setup $d; Damage "$d\$rel"
+    Run $Setup $d 'before-set\pkg2'; Damage "$d\$rel"
     Verify $Before $d; $v1 = $code
-    Run $Before $d; $r = $code; $same = $out
+    Run $Before $d 'before-set\pkg2'; $r = $code; $same = $out
     Verify $Before $d
     "before: verify=$v1 repair=$r file=$(if ((Hash "$d\$rel") -eq $want) { 'repaired' } else { 'STILL DAMAGED' }) verify-again=$code"
 }

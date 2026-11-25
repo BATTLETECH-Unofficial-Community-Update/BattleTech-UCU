@@ -9,7 +9,10 @@
 # Installs: Steam and GOG, every player file equal (SHA-256), Verify install passes.
 # Damaged retail: a scratch retail holding the fingerprint's files and the range sources, one byte flipped inside a
 # used run: shared.bin fails, own.bin and the rest still install (exit 4).
-# Control: a player with no matching runs keeps the old vault magic and installs with 2.1.5-2B's installer.
+# No GOG run: small installs of random bytes (synth.ps1) and a file whose runs only the Steam install holds, packed locked and
+# unlocked with --gog: both stores install it, and a later pack reuses the package.
+# Control: a player with no matching runs packs the same vault format and installs; an installer from before vault v4
+# (-OldInstaller, 2.1.5-2B's) refuses that package and writes nothing.
 param(
     [Parameter(Mandatory)][string]$Root,
     [string]$Steam,
@@ -99,7 +102,7 @@ $packOut.Trim() | ForEach-Object { "  pack: $_" }
 Check 'pack reports ranged files' ($packOut -match 'ranged [1-9]')
 Check 'lowentropy.bin was ranged too (3 ranged files)' ($packOut -match 'ranged 3 files')
 $magic = [Text.Encoding]::ASCII.GetString(([IO.File]::ReadAllBytes("$Root\pkg\package.vault"))[0..7])
-Check "vault magic is BTU6GAR2 (got $magic)" ($magic -eq 'BTU6GAR2')
+Check "vault magic is BTU6GAR4 (got $magic)" ($magic -eq 'BTU6GAR4')
 Check 'GOG manifest written' (Test-Path "$Root\pkg\ucu-manifest-gog.tsv")
 
 $ErrorActionPreference = 'Continue'   # installers report failures on stderr; their exit codes are checked below
@@ -139,7 +142,7 @@ Check 'damaged retail: the file using the flipped range did not install' (-not (
 Check 'damaged retail: own.bin still installed' ((Test-Path "$Root\install-damaged\own.bin") -and (Sha "$Root\install-damaged\own.bin") -eq (Sha "$player\own.bin"))
 Check 'damaged retail: BattleTech.exe still installed' ((Test-Path "$Root\install-damaged\BattleTech.exe") -and (Sha "$Root\install-damaged\BattleTech.exe") -eq (Sha "$player\BattleTech.exe"))
 
-# --- control: no matching runs keeps the old magic and installs with 2.1.5-2B's installer ---
+# --- control: no matching runs, same format; an older installer refuses it ---
 $control = "$Root\control"
 $controlPlayer = "$control\player"
 New-Item -ItemType Directory -Force $controlPlayer | Out-Null
@@ -150,11 +153,41 @@ $random = [byte[]]::new(2500021); ([Random]::new(3)).NextBytes($random)
 & "$Root\tools\ReleasePack.exe" --player $controlPlayer --retail $Steam --key "$Root\scratch.key" --out "$control\pkg" 2>&1 | ForEach-Object { "  pack: $_" }
 Check "control pack exit 0 (got $LASTEXITCODE)" ($LASTEXITCODE -eq 0)
 $magic = [Text.Encoding]::ASCII.GetString(([IO.File]::ReadAllBytes("$control\pkg\package.vault"))[0..7])
-Check "control vault magic is the old BTU6GAT2 (got $magic)" ($magic -eq 'BTU6GAT2')
+Check "control vault magic is BTU6GAR4 too (got $magic)" ($magic -eq 'BTU6GAR4')
 Copy-Item "$Root\tools\BattleTechUCUSetup-2.1.5-2B.exe" "$control\pkg\old-setup.exe"
 & "$control\pkg\old-setup.exe" --retail $Steam --dest "$control\install" --no-mods --steam-root "$Root\no-steam" --backup-root "$Root\no-steam" 2>&1 | ForEach-Object { "  old setup: $_" }
-Check "old installer on the control package exit 0 (got $LASTEXITCODE)" ($LASTEXITCODE -eq 0)
-Check 'old installer wrote own.bin' ((Test-Path "$control\install\own.bin") -and (Sha "$control\install\own.bin") -eq (Sha "$controlPlayer\own.bin"))
-Check 'old installer wrote BattleTech.exe' ((Test-Path "$control\install\BattleTech.exe") -and (Sha "$control\install\BattleTech.exe") -eq (Sha "$controlPlayer\BattleTech.exe"))
+Check "old installer refuses the control package, writing nothing (exit $LASTEXITCODE)" ($LASTEXITCODE -ne 0 -and -not (Test-Path "$control\install"))
+& "$control\pkg\BattleTechUCUSetup.exe" --retail $Steam --dest "$control\install" --no-mods --steam-root "$Root\no-steam" --backup-root "$Root\no-steam" 2>&1 | ForEach-Object { "  setup: $_" }
+Check "its own installer installs it (exit $LASTEXITCODE)" ($LASTEXITCODE -eq 0 -and (Sha "$control\install\own.bin") -eq (Sha "$controlPlayer\own.bin") -and (Sha "$control\install\BattleTech.exe") -eq (Sha "$controlPlayer\BattleTech.exe"))
+
+# --- a ranged file with no run in the GOG install ---
+. (Join-Path $PSScriptRoot 'synth.ps1')
+$nr = "$Root\no-run"
+New-SynthInstalls $nr
+New-Item -ItemType Directory -Force "$nr\player" | Out-Null
+Copy-Item "$nr\steam\BattleTech.exe" "$nr\player"
+[IO.File]::WriteAllText("$nr\player\steam_appid.txt", '637090')
+$run = ReadRun "$nr\steam\BattleTech_Data\level10" 400123 $l1
+$null = MakeFile "$nr\player\steamonly.bin" $run (ReadRun "$nr\steam\BattleTech_Data\level10" 2000777 $l2) 7
+[IO.File]::WriteAllText("$nr\master.txt", '5a' * 32)
+foreach ($form in 'unlocked', 'locked') {
+    $pkg = "$nr\pkg-$form"; $lock = @(); $open = @()
+    if ($form -eq 'locked') { $lock = @('--master-secret', "$nr\master.txt", '--unlock-url', 'https://example.invalid') }
+    $packOut = & "$Root\tools\ReleasePack.exe" --player "$nr\player" --retail "$nr\steam" --gog "$nr\gog" --key "$Root\scratch.key" --out $pkg @lock 2>&1 | Out-String
+    Check "no GOG run, ${form}: pack exit 0, ranged from Steam only (got $LASTEXITCODE)" ($LASTEXITCODE -eq 0 -and $packOut -match 'ranged 1 files' -and $packOut -match '\b1 ranged files from GOG''s own ranges')
+    if ($form -eq 'locked') {
+        $id = -join ([IO.File]::ReadAllBytes("$pkg\package.vault")[9..24] | ForEach-Object { $_.ToString('x2') })
+        $h = New-Object Security.Cryptography.HMACSHA256 (,([byte[]](@(0x5a) * 32)))
+        [IO.File]::WriteAllText("$nr\share.txt", (-join ($h.ComputeHash([Text.Encoding]::UTF8.GetBytes("btucu-share|$id")) | ForEach-Object { $_.ToString('x2') })))
+        $open = @('--share-file', "$nr\share.txt")
+    }
+    foreach ($store in 'steam', 'gog') {
+        $dest = "$nr\install-$form-$store"
+        & "$pkg\BattleTechUCUSetup.exe" --retail "$nr\$store" --dest $dest --no-mods --steam-root "$Root\no-steam" --backup-root "$Root\no-steam" @open 2>&1 | ForEach-Object { "  setup: $_" }
+        Check "no GOG run, ${form}: installs from $store (exit $LASTEXITCODE)" ($LASTEXITCODE -eq 0 -and @(InstalledMatches $dest "$nr\player").Count -eq 0)
+    }
+    $packOut = & "$Root\tools\ReleasePack.exe" --player "$nr\player" --retail "$nr\steam" --gog "$nr\gog" --key "$Root\scratch.key" --out "$pkg-again" --previous $pkg @lock 2>&1 | Out-String
+    Check "no GOG run, ${form}: a later pack over it seals nothing anew (exit $LASTEXITCODE)" ($LASTEXITCODE -eq 0 -and $packOut -match '\b0 sealed anew')
+}
 
 if ($fail) { "FAILED $fail"; exit 1 } else { 'ALL OK'; exit 0 }

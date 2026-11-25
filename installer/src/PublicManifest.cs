@@ -2,9 +2,9 @@
 // whether it is executable. It is published in the clear beside the encrypted package, so anyone can see what a release
 // installs and check an install against it (verify.ps1, or the installer's Verify install).
 //
-// SHA-512, never SHA-256: blob keys and IVs derive from each file's plaintext SHA-256, and v3 seals those values under the
-// release share (docs/keyserver-design.md, gbrain lessons/release-public-hashes-not-sha256). Publishing them would let an
-// old package key open a newer release's changed files.
+// SHA-512, never SHA-256: blob keys, IVs and names derive from each file's plaintext SHA-256 (key separation), and the vault
+// seals those values under the release share (docs/keyserver-design.md, gbrain lessons/release-public-hashes-not-sha256).
+// They are key material: never publish one.
 using System;
 using System.Collections.Generic;
 using System.IO;

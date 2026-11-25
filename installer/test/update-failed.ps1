@@ -1,7 +1,8 @@
 # An update that fails its check must say so, remove the files the new version dropped, verify against the new manifest and
 # mark the folder unfinished; a repair with the good package must clear the mark and leave exactly the new version.
 # Uses make.ps1's v1 and v2 (v2 changes a.bin, drops c.bin, adds e.bin). -Setup is the installer under test; -Before runs an
-# older one through the same damaged update and only reports what it leaves (the control: no mark, c.bin still there).
+# older one through the same damaged update and only reports what it leaves (the control: no mark, c.bin still there). Its
+# build's ReleasePack.exe must sit beside it: an older installer may not read what this build packs, so it gets its own set.
 param(
     [Parameter(Mandatory)][string]$Root,
     [string]$Retail,
@@ -13,7 +14,9 @@ $ErrorActionPreference = 'Stop'
 if (-not $Retail) { $Retail = Get-UcuPath retail_install -Required }
 if (-not $Setup) { $Setup = Join-Path $UcuRepo 'tools\release-gate\bin\BattleTechUCUSetup.exe' }
 if (Test-Path $Root) { throw "Root exists: $Root" }
+if ($Before -and -not (Test-Path (Join-Path (Split-Path $Before) 'ReleasePack.exe'))) { throw "-Before needs its own build's ReleasePack.exe beside it, to pack the set it is run on: $Before" }
 & (Join-Path $PSScriptRoot 'make.ps1') -Root $Root -Retail $Retail | Out-Null
+if ($Before) { & (Join-Path $PSScriptRoot 'make.ps1') -Root "$Root\before-set" -Retail $Retail -Bin (Split-Path $Before) | Out-Null }
 New-Item -ItemType Directory -Force "$Root\no-steam" | Out-Null
 $fail = 0
 function Check([string]$what, [bool]$ok) { if ($ok) { "ok   $what" } else { "FAIL $what"; $script:fail++ } }
@@ -24,18 +27,22 @@ function Run([string]$exe, [string]$pkg, [string]$dest) {
     $script:code = $LASTEXITCODE
 }
 # The damaged package: one byte of the blob holding the new a.bin flipped (the blob pkg1 doesn't have, nearest 2 MiB).
-robocopy "$Root\pkg2" "$Root\pkgBad" /E /NFL /NDL /NJH /NJS /NP | Out-Null
-$had = @(Get-ChildItem "$Root\pkg1" -Recurse -File | ForEach-Object Name)
-$blob = Get-ChildItem "$Root\pkgBad\data" -File | Where-Object { $had -notcontains $_.Name } | Sort-Object { [Math]::Abs($_.Length - 2MB) } | Select-Object -First 1
-$fs = [IO.File]::Open($blob.FullName, 'Open', 'ReadWrite')
-try { $fs.Position = 100000; $b = $fs.ReadByte(); $fs.Position = 100000; $fs.WriteByte(($b -bxor 0xFF)) } finally { $fs.Dispose() }
+function DamagedPackage([string]$set) {
+    robocopy "$set\pkg2" "$set\pkgBad" /E /NFL /NDL /NJH /NJS /NP | Out-Null
+    $had = @(Get-ChildItem "$set\pkg1" -Recurse -File | ForEach-Object Name)
+    $blob = Get-ChildItem "$set\pkgBad\data" -File | Where-Object { $had -notcontains $_.Name } | Sort-Object { [Math]::Abs($_.Length - 2MB) } | Select-Object -First 1
+    $fs = [IO.File]::Open($blob.FullName, 'Open', 'ReadWrite')
+    try { $fs.Position = 100000; $b = $fs.ReadByte(); $fs.Position = 100000; $fs.WriteByte(($b -bxor 0xFF)) } finally { $fs.Dispose() }
+}
+DamagedPackage $Root
 
 function Leaves([string]$d) {
     "exit=$code mark=$(Test-Path "$d\.btu6-updating") c.bin=$(Test-Path "$d\BattleTech_Data\c.bin") e.bin=$(Test-Path "$d\BattleTech_Data\e.bin") a.bin=$(if ((Get-FileHash "$d\BattleTech_Data\a.bin").Hash -eq (Get-FileHash "$Root\p1\BattleTech_Data\a.bin").Hash) { 'v1' } else { 'other' })"
 }
 if ($Before) {
-    Run $Setup "$Root\pkg1" "$Root\before"
-    Run $Before "$Root\pkgBad" "$Root\before"
+    DamagedPackage "$Root\before-set"
+    Run $Setup "$Root\before-set\pkg1" "$Root\before"
+    Run $Before "$Root\before-set\pkgBad" "$Root\before"
     "before: $(Leaves "$Root\before")"
 }
 $d = "$Root\after"

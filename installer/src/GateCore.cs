@@ -2,11 +2,13 @@
 //
 // The content key is kept by whoever packs releases and reused for every release. It is stored only wrapped under a key
 // derived from a retail install, so the package alone decrypts nothing. Each file is compressed, then encrypted with a key
-// and IV derived from the content key and the file's own hash, so an unchanged file gives the same blob in every release
-// and itch.io's patching only sends what changed. Anyone who owns the game can derive the same key: this makes the game a real requirement, it does
-// not stop a determined attacker, and it does not change who holds the rights to the content.
+// and IV derived from the content key and the file's own hash, so an unchanged file gives the same blob in every release.
+// The hashes sit in the sealed manifest (key separation, vault v4: docs/keyserver-design.md). Anyone who owns the game can
+// derive the same key: this makes the game a real requirement, it does not stop a determined attacker, and it does not
+// change who holds the rights to the content.
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -24,6 +26,7 @@ namespace ReleaseGate
         public string RetailPath;  // source inside the retail install; empty when decrypted from the package
         public string Sha256;      // hex, of the plaintext
         public string Pieces;      // ranged entry: B:<len> and R:<offset>:<len>:<retail path> joined by |, else empty
+        public string BlobPlain;   // hex SHA-256 of the bytes the blob holds (a ranged entry's residual, else the file), which keys it; null in a v2 or v3 vault
     }
 
     /// <summary>One piece of a ranged file: copy length bytes from the residual blob (Path empty) or from retail.</summary>
@@ -36,7 +39,7 @@ namespace ReleaseGate
     }
 
     /// <summary>
-    /// A v3 vault's lock: the release id and where to ask for its share (docs/keyserver-design.md). The share is
+    /// A locked vault's (v3, v4) lock: the release id and where to ask for its share (docs/keyserver-design.md). The share is
     /// HMAC-SHA256(master secret, "btucu-share|" + hex id); only the packer and the unlock server hold the master secret.
     /// </summary>
     public sealed class VaultLock
@@ -46,7 +49,7 @@ namespace ReleaseGate
         public string Id { get { return Gate.Hex(ReleaseId); } }
     }
 
-    /// <summary>A v3 vault couldn't be unlocked; Message is for the player.</summary>
+    /// <summary>A locked vault couldn't be unlocked; Message is for the player.</summary>
     public sealed class UnlockException : Exception
     {
         public UnlockException(string message) : base(message) { }
@@ -98,6 +101,9 @@ namespace ReleaseGate
         // hands on to a newer one. The layout after the magic is unchanged.
         static readonly byte[] MagicR = Encoding.ASCII.GetBytes("BTU6GAR2");
         static readonly byte[] MagicR3 = Encoding.ASCII.GetBytes("BTU6GAR3");
+        // v4 (key separation): a byte after the magic says whether the vault is locked; ranged entries need no magic of their
+        // own. The packer writes only v4. v2 and v3 vaults are still read.
+        static readonly byte[] Magic4 = Encoding.ASCII.GetBytes("BTU6GAR4");
         const int Window = 1 << 20;
 
         static bool Starts(byte[] head, byte[] magic)
@@ -111,13 +117,18 @@ namespace ReleaseGate
         /// <summary>False when a vault starts with another format's mark: a newer installer is needed to read it.</summary>
         public static bool IsVault(byte[] head)
         {
-            return Starts(head, Magic) || Starts(head, Magic3) || Starts(head, MagicR) || Starts(head, MagicR3);
+            return Starts(head, Magic) || Starts(head, Magic3) || Starts(head, MagicR) || Starts(head, MagicR3) || Starts(head, Magic4);
         }
 
-        /// <summary>True for a vault with retail-range support (the ranged magic), which a package made by this packer carries.</summary>
+        /// <summary>True for a vault whose packer scanned for retail ranges: the ranged v2 and v3 magics, and every v4.</summary>
         public static bool IsRangedVault(byte[] head)
         {
-            return Starts(head, MagicR) || Starts(head, MagicR3);
+            return Starts(head, MagicR) || Starts(head, MagicR3) || Starts(head, Magic4);
+        }
+
+        public static bool IsV4Vault(byte[] head)
+        {
+            return Starts(head, Magic4);
         }
 
         static bool IsV3(byte[] magic)
@@ -140,14 +151,16 @@ namespace ReleaseGate
             return r;
         }
 
-        /// <summary>The lock of a v3 vault, or null for a v2 one. Reads only the header.</summary>
+        /// <summary>The lock of a v3 or v4 vault, or null for one without the unlock server. Reads only the header.</summary>
         public static VaultLock PeekLock(Stream f)
         {
             using (var r = new BinaryReader(f, Encoding.UTF8, true))
             {
                 byte[] magic = r.ReadBytes(Magic3.Length);
                 if (Starts(magic, Magic) || Starts(magic, MagicR)) return null;
-                if (!IsV3(magic)) throw new InvalidDataException("Not a package vault");
+                bool v4 = Starts(magic, Magic4);
+                if (v4 && !r.ReadBoolean()) return null;
+                if (!v4 && !IsV3(magic)) throw new InvalidDataException("Not a package vault");
                 return new VaultLock { ReleaseId = r.ReadBytes(16), Url = r.ReadString() };
             }
         }
@@ -304,10 +317,11 @@ namespace ReleaseGate
         }
 
         /// <summary>
-        /// With a lock and its share, writes a v3 vault: each retail slot is a pair, a check sealed under the fingerprint
+        /// Writes a v4 vault. With a lock and its share, each retail slot is a pair: a check sealed under the fingerprint
         /// alone (so a wrong install is refused before the server is asked) and the package key sealed under fingerprint
         /// plus share. The manifest is sealed under a key from the package key and the share, so an old package key alone
-        /// doesn't reveal a new release's file hashes, and with them its new blobs' keys.
+        /// doesn't reveal a new release's file hashes, and with them its new blobs' keys. Without a lock the package key is
+        /// sealed under the fingerprint alone and opens the manifest.
         /// </summary>
         public static void WriteVault(string path, byte[] packageKey, IEnumerable<byte[]> fingerprints, List<Entry> entries, VaultLock lk, byte[] share)
         {
@@ -325,29 +339,27 @@ namespace ReleaseGate
             using (var f = new FileStream(path, FileMode.Create, FileAccess.Write))
             using (var w = new BinaryWriter(f))
             {
-                bool ranged = entries.Any(e => !string.IsNullOrEmpty(e.Pieces))
-                    || (stores != null && stores.Values.Any(l => l.Any(e => !string.IsNullOrEmpty(e.Pieces))));
                 var slots = new List<byte[]>();
+                w.Write(Magic4);
+                w.Write(lk != null);
                 if (lk == null)
                 {
-                    w.Write(ranged ? MagicR : Magic);
-                    foreach (byte[] fp in fingerprints) slots.Add(Seal(packageKey, fp, "slot"));
+                    foreach (byte[] fp in fingerprints) slots.Add(Seal(packageKey, fp, "slot4"));
                 }
                 else
                 {
-                    w.Write(ranged ? MagicR3 : Magic3);
                     w.Write(lk.ReleaseId);
                     w.Write(lk.Url);
                     foreach (byte[] fp in fingerprints)
                     {
-                        slots.Add(Seal(Encoding.ASCII.GetBytes(RetailOk), fp, "retail3"));
-                        slots.Add(Seal(packageKey, Concat(fp, share), "slot3"));
+                        slots.Add(Seal(Encoding.ASCII.GetBytes(RetailOk), fp, "retail4"));
+                        slots.Add(Seal(packageKey, Concat(fp, share), "slot4"));
                     }
                 }
                 w.Write(slots.Count);
                 foreach (byte[] s in slots) { w.Write(s.Length); w.Write(s); }
-                byte[] manifestKey = lk == null ? packageKey : Derive(packageKey, share, "manifest3");
-                byte[] m = Seal(Encoding.UTF8.GetBytes(WriteManifest(entries)), manifestKey, "manifest");
+                byte[] manifestKey = lk == null ? packageKey : Derive(packageKey, share, "manifest4");
+                byte[] m = Seal(Encoding.UTF8.GetBytes(WriteManifest(entries)), manifestKey, "manifest4");
                 w.Write(m.Length);
                 w.Write(m);
                 if (stores == null || stores.Count == 0) return;
@@ -355,7 +367,7 @@ namespace ReleaseGate
                 w.Write(stores.Count);
                 foreach (var s in stores)
                 {
-                    byte[] b = Seal(Encoding.UTF8.GetBytes(WriteManifest(s.Value)), manifestKey, "store|" + s.Key);
+                    byte[] b = Seal(Encoding.UTF8.GetBytes(WriteManifest(s.Value)), manifestKey, "store4|" + s.Key);
                     w.Write(s.Key);
                     w.Write(b.Length);
                     w.Write(b);
@@ -366,7 +378,7 @@ namespace ReleaseGate
         const int StoresMark = 0x53545231; // "STR1"
 
         /// <summary>The manifest with a store's section applied: same-path entries replaced, the others added.</summary>
-        static List<Entry> ApplyStore(List<Entry> entries, List<Entry> section)
+        internal static List<Entry> ApplyStore(List<Entry> entries, List<Entry> section)
         {
             var at = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < entries.Count; i++) at[entries[i].Path] = i;
@@ -395,8 +407,8 @@ namespace ReleaseGate
         }
 
         /// <summary>
-        /// As above; a v3 vault calls share once the retail install is accepted. share returns the release's share or
-        /// throws UnlockException; without it a v3 vault throws UnlockException.
+        /// As above; a locked vault calls share once the retail install is accepted. share returns the release's share or
+        /// throws UnlockException; without it a locked vault throws UnlockException.
         /// </summary>
         public static byte[] ReadVault(Stream f, byte[] fingerprint, Func<VaultLock, byte[]> share, out List<Entry> entries)
         {
@@ -410,32 +422,36 @@ namespace ReleaseGate
             using (var r = new BinaryReader(f, Encoding.UTF8, true))
             {
                 byte[] magic = r.ReadBytes(Magic.Length);
-                bool v3 = IsV3(magic);
-                if (!v3 && !Starts(magic, Magic) && !Starts(magic, MagicR)) throw new InvalidDataException("Not a package vault");
-                VaultLock lk = v3 ? new VaultLock { ReleaseId = r.ReadBytes(16), Url = r.ReadString() } : null;
-                byte[] key = null, slot3 = null;
+                bool v4 = Starts(magic, Magic4);
+                if (!v4 && !IsV3(magic) && !Starts(magic, Magic) && !Starts(magic, MagicR)) throw new InvalidDataException("Not a package vault");
+                bool locked = v4 ? r.ReadBoolean() : IsV3(magic);
+                // Each version seals under its own labels, so nothing in a v4 vault opens as another version. v2 and v3 share
+                // the unnumbered ones.
+                string any = v4 ? "4" : "", own = v4 ? "4" : "3";
+                VaultLock lk = locked ? new VaultLock { ReleaseId = r.ReadBytes(16), Url = r.ReadString() } : null;
+                byte[] key = null, slot = null;
                 int slots = r.ReadInt32();
-                for (int i = 0; i < slots; i += v3 ? 2 : 1)
+                for (int i = 0; i < slots; i += locked ? 2 : 1)
                 {
                     byte[] s = r.ReadBytes(r.ReadInt32());
-                    if (!v3) { key = key ?? Open(s, fingerprint, "slot"); continue; }
+                    if (!locked) { key = key ?? Open(s, fingerprint, "slot" + any); continue; }
                     byte[] sealedKey = r.ReadBytes(r.ReadInt32());
-                    if (slot3 == null && Open(s, fingerprint, "retail3") != null) slot3 = sealedKey;
+                    if (slot == null && Open(s, fingerprint, "retail" + own) != null) slot = sealedKey;
                 }
-                if (v3 && slot3 == null) return null;
+                if (locked && slot == null) return null;
                 byte[] manifestKey = key;
-                if (v3)
+                if (locked)
                 {
                     if (share == null) throw new UnlockException("This package needs an access code.");
                     byte[] s = share(lk);
-                    key = Open(slot3, Concat(fingerprint, s), "slot3");
+                    key = Open(slot, Concat(fingerprint, s), "slot" + own);
                     if (key == null) throw new UnlockException("The unlock server's answer doesn't fit this release (release " + lk.Id + ").");
-                    manifestKey = Derive(key, s, "manifest3");
+                    manifestKey = Derive(key, s, "manifest" + own);
                 }
                 if (key == null) return null;
-                byte[] m = Open(r.ReadBytes(r.ReadInt32()), manifestKey, "manifest");
+                byte[] m = Open(r.ReadBytes(r.ReadInt32()), manifestKey, "manifest" + any);
                 if (m == null) throw new InvalidDataException("Package manifest failed its check");
-                entries = ReadManifest(Encoding.UTF8.GetString(m));
+                entries = ReadManifest(Encoding.UTF8.GetString(m), v4);
                 if (store == null) return key;
                 int mark;
                 try { mark = r.ReadInt32(); }
@@ -446,9 +462,9 @@ namespace ReleaseGate
                     string name = r.ReadString();
                     byte[] b = r.ReadBytes(r.ReadInt32());
                     if (name != store) continue;
-                    byte[] s = Open(b, manifestKey, "store|" + name);
+                    byte[] s = Open(b, manifestKey, "store" + any + "|" + name);
                     if (s == null) throw new InvalidDataException("Package store section failed its check");
-                    entries = ApplyStore(entries, ReadManifest(Encoding.UTF8.GetString(s)));
+                    entries = ApplyStore(entries, ReadManifest(Encoding.UTF8.GetString(s), v4));
                 }
                 return key;
             }
@@ -458,24 +474,53 @@ namespace ReleaseGate
         {
             var s = new StringBuilder();
             foreach (Entry e in entries)
+            {
+                // A ranged entry always carries its hash: with no retail run at all, its residual is the whole file.
+                string plain = e.BlobPlain == null || (string.IsNullOrEmpty(e.Pieces) && e.BlobPlain == e.Sha256) ? "" : e.BlobPlain;
                 s.Append(e.Path).Append('\t').Append(e.Size).Append('\t').Append(e.Blob).Append('\t')
                  .Append(e.BlobSha256).Append('\t').Append(e.RetailPath).Append('\t').Append(e.Sha256).Append('\t')
-                 .Append(e.Pieces ?? "").Append('\n');
+                 .Append(e.Pieces ?? "").Append('\t').Append(plain).Append('\n');
+            }
             return s.ToString();
         }
 
-        static List<Entry> ReadManifest(string text)
+        static List<Entry> ReadManifest(string text, bool v4)
         {
             var list = new List<Entry>();
             foreach (string line in text.Split('\n'))
             {
                 if (line.Length == 0) continue;
                 string[] c = line.Split('\t');
-                // The 7th column (pieces) came with retail-range packing; older manifests have 6.
-                list.Add(new Entry { Path = c[0], Size = long.Parse(c[1]), Blob = c[2], BlobSha256 = c[3], RetailPath = c[4], Sha256 = c[5],
-                    Pieces = c.Length > 6 ? c[6] : "" });
+                // The 7th column (pieces) came with retail-range packing; older manifests have 6. The 8th came with v4: the
+                // hash of a ranged entry's residual, empty for any other entry.
+                if (v4 && !GoodRow(c)) throw new InvalidDataException("The package manifest has a bad row: " + c[0]);
+                var e = new Entry { Path = c[0], Size = long.Parse(c[1]), Blob = c[2], BlobSha256 = c[3], RetailPath = c[4], Sha256 = c[5],
+                    Pieces = c.Length > 6 ? c[6] : "" };
+                if (v4 && e.Blob.Length > 0) e.BlobPlain = c[7].Length > 0 ? c[7] : e.Sha256;
+                list.Add(e);
             }
             return list;
+        }
+
+        /// <summary>A v4 row: 8 columns, a plain number for the size, 64 hex digits for every hash it needs, readable pieces.</summary>
+        static bool GoodRow(string[] c)
+        {
+            long size;
+            if (c.Length != 8 || c[0].Length == 0 || !Number(c[1], out size) || !IsHash(c[5])) return false;
+            if (c[7].Length > 0 && !IsHash(c[7])) return false;
+            if (c[2].Length > 0 && (!IsHash(c[3]) || (c[6].Length > 0 && c[7].Length == 0))) return false;
+            ParsePieces(c[6]);
+            return true;
+        }
+
+        static bool IsHash(string s)
+        {
+            return s.Length == 64 && s.All(x => (x >= '0' && x <= '9') || (x >= 'a' && x <= 'f'));
+        }
+
+        static bool Number(string s, out long n)
+        {
+            return long.TryParse(s, NumberStyles.None, CultureInfo.InvariantCulture, out n);
         }
 
         /// <summary>Parses an entry's pieces: B:&lt;length&gt; or R:&lt;offset&gt;:&lt;length&gt;:&lt;retail relative path&gt;.</summary>
@@ -486,10 +531,11 @@ namespace ReleaseGate
             foreach (string p in text.Split('|'))
             {
                 string[] c = p.Split(new[] { ':' }, 4);
-                if (c[0] == "B" && c.Length == 2)
-                    list.Add(new RangePiece { Length = long.Parse(c[1]) });
-                else if (c[0] == "R" && c.Length == 4)
-                    list.Add(new RangePiece { Offset = long.Parse(c[1]), Length = long.Parse(c[2]), Path = c[3] });
+                long at, n;
+                if (c[0] == "B" && c.Length == 2 && Number(c[1], out n))
+                    list.Add(new RangePiece { Length = n });
+                else if (c[0] == "R" && c.Length == 4 && Number(c[1], out at) && Number(c[2], out n))
+                    list.Add(new RangePiece { Offset = at, Length = n, Path = c[3] });
                 else throw new InvalidDataException("Bad piece in the package manifest: " + p);
             }
             return list;
@@ -507,21 +553,31 @@ namespace ReleaseGate
             return b.ToString();
         }
 
-        public static byte[] FileKey(byte[] packageKey, string blob, string purpose)
+        /// <summary>Key separation: a blob's key comes from the content key and the hash of the bytes the blob holds.</summary>
+        public static byte[] FileKey(byte[] contentKey, string plainSha)
         {
-            return Derive(packageKey, Encoding.UTF8.GetBytes(blob), purpose);
+            return Derive(contentKey, FromHex(plainSha), "file4");
         }
 
-        /// <summary>The blob a file is stored in. It depends only on the content key and the file's hash.</summary>
+        /// <summary>The key of an entry's blob, in the form its vault's version uses.</summary>
+        public static byte[] BlobKey(byte[] packageKey, Entry e)
+        {
+            return e.BlobPlain != null ? FileKey(packageKey, e.BlobPlain) : Derive(packageKey, Encoding.UTF8.GetBytes(e.Blob), "file");
+        }
+
+        /// <summary>
+        /// The blob a file is stored in. It depends only on the content key and the file's hash. "v4-" keeps the names apart
+        /// from v2's and v3's, so a blob kept from an older package or download is never taken for a v4 one.
+        /// </summary>
         public static string BlobFor(byte[] contentKey, string plainSha)
         {
-            return "data/" + Hex(Derive(contentKey, Encoding.ASCII.GetBytes(plainSha), "blob-name")).Substring(0, 32) + ".pak";
+            return "data/v4-" + Hex(Derive(contentKey, FromHex(plainSha), "blob4-name")).Substring(0, 32) + ".pak";
         }
 
         public static byte[] BlobIv(byte[] contentKey, string plainSha)
         {
             var iv = new byte[16];
-            Buffer.BlockCopy(Derive(contentKey, Encoding.ASCII.GetBytes(plainSha), "blob-iv"), 0, iv, 0, 16);
+            Buffer.BlockCopy(Derive(contentKey, FromHex(plainSha), "blob4-iv"), 0, iv, 0, 16);
             return iv;
         }
 

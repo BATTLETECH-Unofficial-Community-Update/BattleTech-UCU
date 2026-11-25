@@ -4,7 +4,7 @@
 #   v2 player: change.bin rewritten, gone.bin deleted, new.bin (a fresh retail run: needs a scan) and added.bin added
 # Checks: reuse is reported and counted; data/ (names and bytes) and both public manifests equal a full pack of v2; Steam and GOG
 # installs from the reusing package equal v2; blobs are hard-linked; a damaged old blob is sealed anew instead of trusted;
-# a package from before ranges, another content key, a v3 new package and a v3 old package behave as documented.
+# a package from before ranges, another content key, a locked new package and a locked old package behave as documented.
 param(
     [Parameter(Mandatory)][string]$Root,
     [string]$Steam,
@@ -113,6 +113,8 @@ Random "$Root\ctl.bin" 2500021 9
 $ctl = "$Root\ctl"; New-Item -ItemType Directory -Force $ctl | Out-Null
 Copy-Item "$v1\BattleTech.exe", "$v1\steam_appid.txt" $ctl; Copy-Item "$Root\ctl.bin" "$ctl\own.bin"
 Pack $ctl "$Root\pkgOld" @('--key', $key)
+# The mark a packer from before ranges wrote.
+$old = [IO.File]::ReadAllBytes("$Root\pkgOld\package.vault"); [Array]::Copy([Text.Encoding]::ASCII.GetBytes('BTU6GAT2'), $old, 8); [IO.File]::WriteAllBytes("$Root\pkgOld\package.vault", $old)
 Pack $v2 "$Root\pkgRefused1" @('--key', $key, '--previous', "$Root\pkgOld")
 Check "a previous package from before ranges is refused (exit $lastExit)" ($lastExit -ne 0 -and $last -match 'before retail-range packing')
 "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" | Set-Content -NoNewline "$Root\other.key"
@@ -120,16 +122,16 @@ Pack $v2 "$Root\pkgRefused2" @('--key', "$Root\other.key", '--previous', "$Root\
 Check "another content key is refused (exit $lastExit)" ($lastExit -ne 0 -and $last -match 'different content key')
 Check 'no half-made package after a refusal' (-not (Test-Path "$Root\pkgRefused2\package.vault"))
 
-# v3: a new v3 package over a v2 one, then a v3 package over that v3 one (needs the master secret to read)
+# Locked: a new locked package over an unlocked one, then one over that locked one (needs the master secret to read)
 "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210" | Set-Content -NoNewline "$Root\master.txt"
 $v3 = @('--key', $key, '--master-secret', "$Root\master.txt", '--unlock-url', 'https://example.invalid/unlock')
 Pack $v2 "$Root\pkg3Full" $v3
 Pack $v2 "$Root\pkg3" ($v3 + @('--previous', "$Root\pkgA"))
-Check "v3 package over a v2 previous exit 0 (got $lastExit)" ($lastExit -eq 0 -and $last -match 'reused from')
-Check 'v3 reusing package data/ equals a full v3 pack' (-not (Compare-Object (Listing "$Root\pkg3Full") (Listing "$Root\pkg3")))
+Check "locked package over an unlocked previous exit 0 (got $lastExit)" ($lastExit -eq 0 -and $last -match 'reused from')
+Check 'locked reusing package data/ equals a full locked pack' (-not (Compare-Object (Listing "$Root\pkg3Full") (Listing "$Root\pkg3")))
 Pack $v2 "$Root\pkg3b" ($v3 + @('--previous', "$Root\pkg3"))
-Check "v3 package over a v3 previous exit 0 (got $lastExit)" ($lastExit -eq 0 -and $last -match 'reused from')
+Check "locked package over a locked previous exit 0 (got $lastExit)" ($lastExit -eq 0 -and $last -match 'reused from')
 Pack $v2 "$Root\pkg3c" @('--key', $key, '--previous', "$Root\pkg3")
-Check "a v3 previous without the master secret is refused (exit $lastExit)" ($lastExit -ne 0 -and $last -match 'master secret')
+Check "a locked previous without the master secret is refused (exit $lastExit)" ($lastExit -ne 0 -and $last -match 'master secret')
 
 if ($fail) { "FAILED $fail"; exit 1 } else { 'ALL OK'; exit 0 }

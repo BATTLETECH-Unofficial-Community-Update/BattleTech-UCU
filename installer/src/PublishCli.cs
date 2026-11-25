@@ -90,6 +90,8 @@ namespace ReleaseGate
             if (!double.TryParse(partGib, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out g) || g < 0.01 || g >= 2.0)
                 throw new ArgumentException("--part-gib must be from 0.01 to under 2");
             long partBytes = (long)(g * 1073741824.0);
+            string problem = ManagerForm.PublishProblem(package);
+            if (problem != null) throw new IOException(problem);
             if (Directory.Exists(outDir) && Directory.EnumerateFileSystemEntries(outDir).Any()) throw new IOException("The assets folder is not empty: " + outDir);
             if (!File.Exists(setup)) throw new IOException("No installer at " + setup);
             if (!File.Exists(verify)) throw new IOException("No verify script at " + verify);
@@ -176,12 +178,13 @@ namespace ReleaseGate
             return string.Join(" ", lines);
         }
 
-        // ManagerForm.GitHubUpload without its dialogs: a package with no unlock lock or no public manifest is refused.
+        // ManagerForm.GitHubUpload without its dialogs: a package that isn't a locked v4 one, or has no public manifest, is refused.
         static string Upload(string assets, string mainName, string dataName, string tokenFile, string masterFile, string tag, string name, string body, bool draft, Action<string> log)
         {
             assets = Path.GetFullPath(assets);
             GitHub main = new GitHub(mainName, tokenFile), data = new GitHub(dataName, tokenFile);
-            if (ManagerForm.LockOf(assets) == null) throw new IOException("This package needs no access code, and GitHub releases are public. Pack it with the unlock server.");
+            string problem = ManagerForm.PublishProblem(assets);
+            if (problem != null) throw new IOException(problem + " Nothing was uploaded.");
             List<string> files = ManagerForm.AssetFiles(assets);
             var exeOnly = files.Where(f => new[] { Remote.InstallerName, PublicManifest.FileName, PublicManifest.GogFileName, ManagerForm.VerifyScript }
                 .Contains(Path.GetFileName(f), StringComparer.OrdinalIgnoreCase)).ToList();

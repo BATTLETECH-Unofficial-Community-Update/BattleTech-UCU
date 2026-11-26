@@ -13,7 +13,7 @@ A (lowercase h) harebrained scheme to port (uppercase) Harebrained Schemes' [*BA
 - [Current Release](#current-release)
 - [Mission and Scope](#mission-and-scope)
 - [Linux and MacOS](#linux-and-macos)
-- [What's different from the 2018 retail game (and what isn't)](#whats-different-from-the-2018-retail-game-and-what-isnt)
+- [Headline Features and Bugfixes](#headline-features-and-bugfixes)
 - [Installing and Running BattleTech: Unofficial Community Update](#installing-and-running-battletech-unofficial-community-update)
 - [Mod packs on UCU](#mod-packs-on-ucu)
 - [For mod authors](#for-mod-authors)
@@ -62,19 +62,23 @@ We are not game designers and we are not here to impose our vision upon BATTLETE
 
 ## Linux and MacOS
 
-Linux (Proton) is ready for testing. If you try it on Linux or a Steam Deck, please tell us how it went through the Issues link. We are trying to determine whether there is community interest in a native Linux install, or if Proton is sufficient. Submit feedback [here](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/23).
-
-MacOS is harder as I have no Mac hardware, but as we have a developer who does and other community members willing to test it ... a MacOS Apple Silicon (+Universal) build is now in the works.
+Linux (Proton) is supported via Proton. A native Linux release is possible, but waiting for MacOS and other items to be completed. We are collecting feedback on interest in a native Linux release [here](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/23).
 
 The MacOS build is in testing and is not yet approved. It is published as a pre-release for testers: expect problems, and please tell us how it went through the Issues link.
 
-## What's different from the 2018 retail game (and what isn't)
+MacOS Known Issues:
+
+- **Audio**: Retail uses WWise as its audio engine. Paradox did not supply an Apple silicon version of WWise, so the game's audio engine was rewritten from scratch for the Mac release. It likely needs some rough edges smoothed out.
+- **Video**: Retail uses Bink as its video engine. Paradox did not supply an Apple silicon version of Bink, so all videos have been converted to a format not requiring Bink. Please let us know if anything looks off.
+- **Starmap / Visual Issues**: Retail used OpenGL shaders. UCU has implemented Metal shaders. Metal shaders support most but not all of the same geometry as DirectX and OpenGL, and the biggest area where a gap exists is on the starmap. We have worked around it, but let us know if (and to what extent) the Starmap seems 'off.'
+
+## Headline Features and Bugfixes
 
 - **Campaign/Career multiplayer.** Retail multiplayer is skirmish-only and relied on multiplayer servers long since sunset (without mods). In 2.x, career and campaign mode support the host inviting up to three other players and assigning permissions for each guest (mech bay, store, hiring, barracks, etc). Everyone sees the Argo, and each player controls the 'Mechs assigned to them. On a mission with fewer 'Mechs than players, anyone not assigned to a 'mech is an observer. On Steam and GOG installs the host can invite friends from the game (GOG co-op is new; see Known Issues), and the host's *Speed up combat* setting and the fast-forward key now work for everyone in a co-op contract.
-- **Faster loading.** A career save loads in about 17 seconds, down from 29 to 36 in our tests. A heavily modded save loads about a fifth faster.
-- **Retail bugs fixed.** Including multiplayer deadlocks, mortar strikes that lost their targets or fired twice on other players' screens, and more.
-- **Direct3D 12 with multicore rendering.** DirectX 11 is the default until this has had more testing. In the launcher's *Settings* tab, *DirectX 12 with multi-core rendering* starts the game on Direct3D 12 and spreads the rendering work across several CPU cores; starting the game with `-force-d3d12` by hand gives Direct3D 12 on one rendering thread. In one measurement, multi-core rendering was faster than DirectX 11 and plain Direct3D 12 was about level with it. The [CHANGELOG](CHANGELOG.md) has the figures.
-- **Mods still work.** ModTek and Harmony mods run with no rebuild. BTA, BEX:T, Hyades Rim, and xAI are supported (RogueTech pending)
+- **Faster loading.** Saves load between 25 and 50 percent faster.
+- **Retail bugs fixed.** Mechs spawning on non-routable tiles, multiplayer deadlocks, mortar strikes that lost their targets or fired twice on other players' screens, and more.
+- **Modpack Compatibility Adapters.** UCU supports ModTek and adapts existing mods to Unity 6 and co-op MP support on-the-fly, and in some instances, fixes longstanding issues like Battle armor sounds. ModTek and Harmony mods run as they are. BTA, BEX:T, Hyades Rim, and xAI are supported (RogueTech pending)
+- **Direct3D 12 with multicore rendering.** While DirectX 11 is the default, In the launcher's *Settings* tab, *DirectX 12 with multi-core rendering* starts the game on Direct3D 12 and spreads the rendering work across several CPU cores; starting the game with `-force-d3d12` by hand gives Direct3D 12 on one rendering thread. In one measurement, multi-core rendering was faster than DirectX 11 and plain Direct3D 12 was about level with it. The [CHANGELOG](CHANGELOG.md) has the figures.
 - **Paradox Online Services.** Paradox accounts work as in retail. Some analysis telemetry (app launch, hardware info) is sent to Paradox in retail; we disabled the telemetry Paradox was rejecting.
 
 See the [CHANGELOG](CHANGELOG.md) for the full list.

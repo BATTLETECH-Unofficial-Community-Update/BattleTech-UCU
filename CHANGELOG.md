@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.3.4-4B (BT-UCU Beta 4.4)
+
+- **Maps load faster and the UI does less needless work.** Three speed-ups from a contributor: a new light now goes straight into its place in the game's sorted light list instead of re-sorting the whole list, a UI animation looks up only its own tweens instead of every running tween, and the UI's draw list is built once per refresh instead of twice.
+- **A macOS build is available for testing** as a separate pre-release at the same version. It is in testing and not yet approved.
+
 ## 2.3.3-4B (BT-UCU Beta 4.3)
 
 - **In co-op, the movement reticle goes away when your 'Mech finishes moving.** The HUD stayed in move mode, so hovering an enemy showed the wrong chance to hit and a second click on the ground moved the 'Mech again.

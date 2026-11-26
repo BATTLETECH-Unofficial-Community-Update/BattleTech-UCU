@@ -44,11 +44,11 @@ This project is a personal, non-commercial effort and is not affiliated with Par
 ## Current Release
 
 <!-- release-version -->
-**Version 2.3.3-4B** (more simply: UCU Beta 4.3). ([Release Notes](CHANGELOG.md)). Version definitions have to stick to the retail numbering system, but we assign our own meaning to it:
+**Version 2.3.4-4B** (more simply: UCU Beta 4.4). ([Release Notes](CHANGELOG.md)). Version definitions have to stick to the retail numbering system, but we assign our own meaning to it:
 
 - **2**: Major release: 2.0 is defined as Unity 6-built feature parity with retail and its DLC along with bugfixes, optimizations, and the multiplayer changes below.
 - **3**: Minor release with new features or requirements, non-breaking changes backwards compatible within the major release line. A new minor release should indicate a significant fix or new feature.
-- **3**: Patchlevel: Bugfixes or minor corrections to the previous minor release.
+- **4**: Patchlevel: Bugfixes or minor corrections to the previous minor release.
 - **4B**: Simplified release indicator: (A)lpha/(B)eta/(R)elease and the number ('Beta 4' in this example)
 <!-- /release-version -->
 
@@ -65,6 +65,8 @@ We are not game designers and we are not here to impose our vision upon BATTLETE
 Linux (Proton) is ready for testing. If you try it on Linux or a Steam Deck, please tell us how it went through the Issues link. We are trying to determine whether there is community interest in a native Linux install, or if Proton is sufficient. Submit feedback [here](https://github.com/BATTLETECH-Unofficial-Community-Update/BattleTech-UCU/issues/23).
 
 MacOS is harder as I have no Mac hardware, but as we have a developer who does and other community members willing to test it ... a MacOS Apple Silicon (+Universal) build is now in the works.
+
+The MacOS build is in testing and is not yet approved. It is published as a pre-release for testers: expect problems, and please tell us how it went through the Issues link.
 
 ## What's different from the 2018 retail game (and what isn't)
 

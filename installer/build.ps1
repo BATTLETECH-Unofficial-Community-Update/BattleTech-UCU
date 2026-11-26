@@ -25,7 +25,7 @@ if ($LASTEXITCODE -ne 0) { throw 'csc failed for BattleTechUCUSetup' }
 if ($LASTEXITCODE -ne 0) { throw 'csc failed for ReleaseManager' }
 # ReleasePublish.exe: the manager's GitHub steps from a command line (src/PublishCli.cs). Not deployed by -Deploy;
 # it takes the installer and verify.ps1 as arguments.
-& dotnet $csc @common -target:exe '-main:ReleaseGate.PublishCli' "-resource:$src\gog-accept.tsv,gog-accept.tsv" "-out:$bin\ReleasePublish.exe" -define:MANAGER @refs "-r:$fx\System.Web.Extensions.dll" "$src\AssemblyInfo.cs" "$src\GateCore.cs" "$src\PublicManifest.cs" "$src\RetailRanges.cs" "$src\Pack.cs" "$src\Volumes.cs" "$src\Remote.cs" "$src\Unlock.cs" "$src\SteamTicket.cs" "$src\Installer.cs" "$src\GitHubReleases.cs" "$src\PlayerVersion.cs" "$src\ReleaseManager.cs" "$src\PublishCli.cs"
+& dotnet $csc @common -target:exe '-main:ReleaseGate.PublishCli' "-resource:$src\gog-accept.tsv,gog-accept.tsv" "-out:$bin\ReleasePublish.exe" -define:MANAGER,PUBLISH_CLI @refs "-r:$fx\System.Web.Extensions.dll" "$src\AssemblyInfo.cs" "$src\GateCore.cs" "$src\PublicManifest.cs" "$src\RetailRanges.cs" "$src\Pack.cs" "$src\Volumes.cs" "$src\Remote.cs" "$src\Unlock.cs" "$src\SteamTicket.cs" "$src\Installer.cs" "$src\GitHubReleases.cs" "$src\PlayerVersion.cs" "$src\ReleaseManager.cs" "$src\PublishCli.cs"
 if ($LASTEXITCODE -ne 0) { throw 'csc failed for ReleasePublish' }
 Get-ChildItem $bin -Filter *.exe | ForEach-Object { "$($_.Name) $($_.Length)" }
 if ($Deploy) {

@@ -200,7 +200,12 @@ namespace ReleaseGate
         public static byte[] Share(byte[] masterSecret, byte[] releaseId)
         {
             using (var h = new HMACSHA256(masterSecret))
+#if UCU_MAC
+                // A macOS package has its own share label, so what the server hands a Mac install opens Mac packages only.
+                return h.ComputeHash(Encoding.UTF8.GetBytes((Platform != null ? "btucu-share-mac|" : "btucu-share|") + Hex(releaseId)));
+#else
                 return h.ComputeHash(Encoding.UTF8.GetBytes("btucu-share|" + Hex(releaseId)));
+#endif
         }
 
         static byte[] Concat(byte[] a, byte[] b)

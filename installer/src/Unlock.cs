@@ -25,7 +25,7 @@ namespace ReleaseGate
         public static string UrlOverride;
         /// <summary>The BATTLETECH folder being checked: its steam_api64.dll gets the Steam ticket.</summary>
         public static string Retail;
-        /// <summary>How the last share was obtained: "steam", "gog", "code" or "share".</summary>
+        /// <summary>How the last share was obtained: "steam", "gog", "mac", "code" or "share".</summary>
         public static string LastRoute;
 
         const string Agent = "BattleTechUCU-Setup";
@@ -81,7 +81,7 @@ namespace ReleaseGate
                 byte[] hit;
                 if (Cache.TryGetValue(macKey, out hit)) { LastRoute = "mac"; return hit; }
             }
-            byte[] macShare = Ask((UrlOverride ?? lk.Url).TrimEnd('/') + "/v1/unlock", GogRequest(lk.Id, Gate.Fingerprint(Retail)));
+            byte[] macShare = Ask((UrlOverride ?? lk.Url).TrimEnd('/') + "/v1/unlock", MacRequest(lk.Id, Gate.Fingerprint(Retail)));
             lock (Cache) Cache[macKey] = macShare;
             LastRoute = "mac";
             return macShare;
@@ -136,8 +136,10 @@ namespace ReleaseGate
             if (error == "steam-off") throw new UnlockException(string.IsNullOrEmpty(message) ? "Unlocking through Steam is switched off for now. Enter an access code instead." : message);
             if (error == "steam-down") throw new UnlockException("Steam couldn't be asked to confirm your copy right now. Try again later.");
 #if UCU_MAC
-            if (error == "gog") throw new UnlockException("The unlock server didn't accept this Mac install of BATTLETECH. It needs the Steam version, unmodified: verify the game's files in Steam and try again.");
-            if (error == "gog-off") throw new UnlockException(string.IsNullOrEmpty(message) ? "Unlocking is switched off for now. Try again later." : message);
+            if (error == "mac") throw new UnlockException("The unlock server didn't accept this Mac install of BATTLETECH. It needs the Steam version, unmodified: verify the game's files in Steam and try again.");
+            if (error == "mac-off") throw new UnlockException(string.IsNullOrEmpty(message) ? "Unlocking is switched off for now. Try again later." : message);
+            // A server from before the Mac route reads the request as a code and says it is badly formed.
+            if (status == 400 && error == "bad-request") throw new UnlockException("The unlock server doesn't unlock Mac installs yet. Try again later, or download this tool again.");
 #else
             if (error == "gog") throw new UnlockException("The unlock server didn't accept this GOG install of BATTLETECH. If you were given an access code, enter it instead.");
             if (error == "gog-off") throw new UnlockException(string.IsNullOrEmpty(message) ? "Unlocking GOG installs is switched off for now. Enter an access code instead." : message);
@@ -181,6 +183,19 @@ namespace ReleaseGate
             return new Dictionary<string, object> { { "release", releaseId }, { "gog", proof }, { "installer", Version } };
         }
 
+#if UCU_MAC
+        /// <summary>
+        /// The Mac route's request: HMAC-SHA256 keyed with the install's fingerprint over "btucu-mac|" + the release id. The server
+        /// holds the accepted Mac fingerprints and recomputes it; the proof opens this release only, and the share it gets is a Mac share.
+        /// </summary>
+        static Dictionary<string, object> MacRequest(string releaseId, byte[] fingerprint)
+        {
+            string proof;
+            using (var h = new HMACSHA256(fingerprint)) proof = Gate.Hex(h.ComputeHash(Encoding.UTF8.GetBytes("btucu-mac|" + releaseId)));
+            return new Dictionary<string, object> { { "release", releaseId }, { "mac", proof }, { "installer", Version } };
+        }
+
+#endif
         /// <summary>
         /// Checks a server's GOG route. With a GOG install's fingerprint, a real proof for this release must come back with
         /// the release's share (want), which shows the server holds that fingerprint. Without one, a dummy proof must be

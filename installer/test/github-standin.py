@@ -89,6 +89,9 @@ class H(BaseHTTPRequestHandler):
                 return self.send(200, [])
             if method == "GET" and rest == "/releases":
                 return self.send(200, rels if q.get("page", ["1"])[0] == "1" else [])
+            if method == "GET" and rest == "/releases/latest":
+                latest = next((r for r in rels if not r["draft"] and not r["prerelease"]), None)
+                return self.send(200, latest or {"message": "not found"})
             if method == "GET" and rest.startswith("/attestations/sha256:"):
                 return self.send(200, {"attestations": [{"bundle": {}}]})
             if method == "POST" and rest == "/releases":
@@ -96,7 +99,7 @@ class H(BaseHTTPRequestHandler):
                 rid = nid()
                 r = {"id": rid, "tag_name": d["tag_name"], "name": d["name"], "body": d["body"], "draft": d["draft"],
                      "prerelease": d["prerelease"], "assets": [], "published_at": None if d["draft"] else stamp(), "upload_url": f"{base}/upload/{repo}/{rid}{{?name,label}}",
-                     "html_url": f"https://example.invalid/{repo}/releases/tag/{d['tag_name']}"}
+                     "make_latest": d.get("make_latest"), "html_url": f"https://example.invalid/{repo}/releases/tag/{d['tag_name']}"}
                 rels.insert(0, r)
                 return self.send(201, r)
             mm = re.fullmatch(r"/releases/(\d+)", rest)
@@ -105,7 +108,7 @@ class H(BaseHTTPRequestHandler):
                 for r in rels:
                     if r["id"] == int(mm.group(1)):
                         was_draft = r["draft"]
-                        r.update({k: v for k, v in d.items() if k in ("draft", "body")})
+                        r.update({k: v for k, v in d.items() if k in ("draft", "body", "make_latest")})
                         if was_draft and not r["draft"]:
                             r["published_at"] = stamp()
                         return self.send(200, r)

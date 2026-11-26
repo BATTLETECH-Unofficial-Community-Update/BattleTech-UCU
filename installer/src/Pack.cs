@@ -371,7 +371,12 @@ namespace ReleaseGate
             // A package is never written over another: the old one's blobs, vault and installer would mix with the new.
             if (Directory.Exists(output)) throw new OutputExistsException(Path.GetFullPath(output));
 #if UCU_MAC
-            if (!File.Exists(Path.Combine(player, lay.Exe))) throw new FileNotFoundException("The player has no " + lay.Exe + ". See Package a release in the README.");
+            if (lay.Platform != null)
+            {
+                string executable = CodeResources.PlayerExecutable(Path.Combine(player, "BattleTech.app", "Contents"));
+                if (executable == null) throw new FileNotFoundException("The player's Info.plist has no safe CFBundleExecutable naming a file in MacOS/. See Package a release in the README.");
+            }
+            else if (!File.Exists(Path.Combine(player, lay.Exe))) throw new FileNotFoundException("The player has no " + lay.Exe + ". See Package a release in the README.");
 #else
             if (!File.Exists(Path.Combine(player, "BattleTech.exe"))) throw new FileNotFoundException("The player has no BattleTech.exe. See Package a release in the README.");
 #endif

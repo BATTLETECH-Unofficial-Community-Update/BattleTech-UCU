@@ -1,0 +1,51 @@
+<!-- The macOS command-line tool: the installer's own sources (../src) as net10.0, with UCU_MAC on, two shims and the macOS platform
+     layer. Self-contained, one file per CPU (osx-arm64, osx-x64); the SDK ad-hoc signs a macOS host it builds, on any OS. See ../README.md,
+     "macOS", and build.ps1 here. Deterministic: the same commit builds the same bytes. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>ucu</AssemblyName>
+    <RootNamespace>ReleaseGate</RootNamespace>
+    <LangVersion>12</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>   <!-- the version below is what the tool sends the server (Unlock.Version) -->
+    <DefineConstants>$(DefineConstants);UCU_MAC;SETUP</DefineConstants>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <DebugType>none</DebugType>
+    <PathMap>$(MSBuildThisFileDirectory)=ucu/</PathMap>
+    <!-- In a git checkout the SDK appends the commit to the informational version (1.0.3.0+<sha>), so this repository, the
+         public mirror and a folder with no git would build different bytes from the same source. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <NoWarn>SYSLIB0014;SYSLIB0021;SYSLIB0023;CS0649;CS0169;CS0219;CS0162;CS0414</NoWarn>
+    <!-- Published with: dotnet publish -r osx-arm64 (or osx-x64): one self-contained file. -->
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
+    <UseAppHost>true</UseAppHost>
+    <Version>1.0.3.0</Version>
+    <AssemblyVersion>1.0.3.0</AssemblyVersion>
+    <FileVersion>1.0.3.0</FileVersion>
+    <InformationalVersion>1.0.3.0</InformationalVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../src/GateCore.cs" />
+    <Compile Include="../src/MacLayout.cs" />
+    <Compile Include="../src/PublicManifest.cs" />
+    <Compile Include="../src/Volumes.cs" />
+    <Compile Include="../src/Remote.cs" />
+    <Compile Include="../src/Unlock.cs" />
+    <Compile Include="../src/Installer.cs" />
+    <Compile Include="../src/SaveBackup.cs" />
+    <Compile Include="MacPlatform.cs" />
+    <Compile Include="MacMain.cs" />
+    <Compile Include="CngShim.cs" />
+    <Compile Include="JsonShim.cs" />
+  </ItemGroup>
+</Project>

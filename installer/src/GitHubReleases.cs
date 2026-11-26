@@ -104,6 +104,17 @@ namespace ReleaseGate
             return null;
         }
 
+#if PUBLISH_CLI
+        public Dictionary<string, object> CreateRelease(string tag, string name, string body, bool draft, bool prerelease, bool preventLatest)
+        {
+            var fields = new Dictionary<string, object>
+            {
+                { "tag_name", tag }, { "name", name }, { "body", body }, { "draft", draft }, { "prerelease", prerelease },
+            };
+            if (preventLatest) fields["make_latest"] = "false";
+            return (Dictionary<string, object>)Call("POST", "/releases", fields);
+        }
+#else
         public Dictionary<string, object> CreateRelease(string tag, string name, string body, bool draft, bool prerelease)
         {
             return (Dictionary<string, object>)Call("POST", "/releases", new Dictionary<string, object>
@@ -111,6 +122,7 @@ namespace ReleaseGate
                 { "tag_name", tag }, { "name", name }, { "body", body }, { "draft", draft }, { "prerelease", prerelease },
             });
         }
+#endif
 
         public void DeleteAsset(object id) { Call("DELETE", "/releases/assets/" + id, null); }
 
@@ -155,10 +167,19 @@ namespace ReleaseGate
             });
         }
 
+#if PUBLISH_CLI
+        public Dictionary<string, object> Publish(Dictionary<string, object> release, bool preventLatest = false)
+        {
+            var change = new Dictionary<string, object> { { "draft", false } };
+            if (preventLatest) change["make_latest"] = "false";
+            return (Dictionary<string, object>)Call("PATCH", "/releases/" + release["id"], change);
+        }
+#else
         public Dictionary<string, object> Publish(Dictionary<string, object> release)
         {
             return (Dictionary<string, object>)Call("PATCH", "/releases/" + release["id"], new Dictionary<string, object> { { "draft", false } });
         }
+#endif
 
         public void Upload(Dictionary<string, object> release, string file, Action<long> sent, CancellationToken stop)
         {
@@ -209,8 +230,13 @@ namespace ReleaseGate
         /// Finds or creates the release with this tag, then uploads the files in order, skipping any already there at the same
         /// size. Runs in a job; sent counts bytes for the progress bar.
         /// </summary>
+#if PUBLISH_CLI
+        internal static Dictionary<string, object> UploadRelease(GitHub gh, string repoName, string tag, string name, string body, bool draft, bool pre,
+            List<string> files, long[] sent, Action<string> current, CancellationToken token, ref int uploaded, ref int skipped, string mainName, Action<string> log, bool preventLatest = false)
+#else
         internal static Dictionary<string, object> UploadRelease(GitHub gh, string repoName, string tag, string name, string body, bool draft, bool pre,
             List<string> files, long[] sent, Action<string> current, CancellationToken token, ref int uploaded, ref int skipped, string mainName, Action<string> log)
+#endif
         {
             if (gh.IsEmpty())
             {
@@ -220,7 +246,11 @@ namespace ReleaseGate
             var rel = gh.FindRelease(tag);
             if (rel == null)
             {
+#if PUBLISH_CLI
+                rel = gh.CreateRelease(tag, name, body, draft, pre, preventLatest);
+#else
                 rel = gh.CreateRelease(tag, name, body, draft, pre);
+#endif
                 log("Created release " + tag + " in " + repoName + (draft ? " (draft)" : ""));
             }
             else log("Adding to the existing release " + tag + " in " + repoName + (true.Equals(rel["draft"]) ? " (draft)" : " (published)"));
@@ -313,18 +343,36 @@ namespace ReleaseGate
             return string.Format("{0} {1} data parts ({2}) from {3} older releases in {4}.", dryRun ? "Would remove" : "Removed", files, Checks.Gib(bytes), releases, dataName);
         }
 
+#if PUBLISH_CLI
+        internal static string PublishBoth(GitHub main, GitHub data, string mainName, string dataName, string tag, Action<string> log, bool prune = true, bool mac = false)
+#else
         internal static string PublishBoth(GitHub main, GitHub data, string mainName, string dataName, string tag, Action<string> log, bool prune = true)
+#endif
         {
             var d = data.FindRelease(tag);
             var m = main.FindRelease(tag);
             if (d == null || m == null)
                 throw new IOException("There's no release " + tag + " in " + (d == null ? dataName : mainName) + " to publish. Press Upload to GitHub first: it creates " +
                     "both releases and the tag (as drafts while Draft is ticked), then Publish makes them public. Nothing was published.");
+#if PUBLISH_CLI
+            string vaultName = mac ? "package-mac.vault" : Gate.VaultName;
+            if (!GitHub.Assets(d).Any(a => string.Equals(a["name"] as string, vaultName, StringComparison.OrdinalIgnoreCase)))
+                throw new IOException("The data release has no " + vaultName + " yet: its upload didn't finish. Upload again; nothing was published.");
+#else
             if (!GitHub.Assets(d).Any(a => string.Equals(a["name"] as string, Gate.VaultName, StringComparison.OrdinalIgnoreCase)))
                 throw new IOException("The data release has no " + Gate.VaultName + " yet: its upload didn't finish. Upload again; nothing was published.");
+#endif
+#if PUBLISH_CLI
+            if (mac && !true.Equals(m["prerelease"]))
+                throw new IOException("The visible Mac release must be marked pre-release; nothing was published.");
+#endif
             // Data first: the installer reads the data release, and a player who opens the main release should find it ready.
             if (true.Equals(d["draft"])) { d = data.Publish(d); log("Published " + tag + " in " + dataName); }
+#if PUBLISH_CLI
+            if (true.Equals(m["draft"])) { m = main.Publish(m, mac); log("Published " + tag + " in " + mainName); }
+#else
             if (true.Equals(m["draft"])) { m = main.Publish(m); log("Published " + tag + " in " + mainName); }
+#endif
             string housekeeping = "";
             if (prune)
             {

@@ -71,7 +71,9 @@ In `<workspace>\ReleaseManager\keyserver`, in PowerShell:
    ..\ReleasePack.exe --fingerprint <retail> | npx wrangler secret put GOG_FINGERPRINTS
    ```
 
-   For more than one GOG build, put their fingerprints in one value, separated by commas.
+   For more than one GOG build, put their fingerprints in one value, separated by commas. `wrangler secret put` replaces the whole
+   value and a secret can't be read back, so adding another fingerprint (a Mac install's, `../README.md` "macOS") means putting
+   every one again in one value.
 
 7. Deploy. Note the `https://btucu-unlock.<your-subdomain>.workers.dev` address it prints.
 

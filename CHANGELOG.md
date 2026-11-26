@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.5-4B (BT-UCU Beta 4.5)
+
+- **In co-op, every player can Reserve again.** Reserve was hidden for everyone in co-op; it now moves only your own units in the current phase to the next one, as in the original game, and leaves your partner's units where they are.
+
 ## 2.3.4-4B (BT-UCU Beta 4.4)
 
 - **Maps load faster and the UI does less needless work.** Three speed-ups from a contributor: a new light now goes straight into its place in the game's sorted light list instead of re-sorting the whole list, a UI animation looks up only its own tweens instead of every running tween, and the UI's draw list is built once per refresh instead of twice.

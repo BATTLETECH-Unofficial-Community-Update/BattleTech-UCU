@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.3.3-4B (BT-UCU Beta 4.3)
+
+- **In co-op, the movement reticle goes away when your 'Mech finishes moving.** The HUD stayed in move mode, so hovering an enemy showed the wrong chance to hit and a second click on the ground moved the 'Mech again.
+- **In co-op, the guest sees every pilot's portrait.** Some arrived without their colours and showed as a flat box.
+- **In co-op, the guest sees enemy initiative icons and enemy turn banners as the host does.** The guest's game did not register some enemies when the host detected them.
+- **In co-op, the guest's Destroy Base objective to destroy the ambushers switches on when they are detected.** Only the host's game switched it on.
+- **The installer no longer writes over another copy of BATTLETECH.** A folder holding the original game, or a copy of it from another store or library, is now refused before anything is written.
+
 ## 2.3.2-4B (BT-UCU Beta 4.2)
 
 This is a bugfix release that includes a fix to loud and/or repetitive Battle Armor sounds in modpacks like BTA that use battle armor, a D3D12 texture issue, a combat log fix, and an update to the installer for widescreen resolutions. 

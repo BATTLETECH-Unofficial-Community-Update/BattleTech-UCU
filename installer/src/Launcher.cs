@@ -20,6 +20,7 @@ namespace ReleaseGate
         public bool CheckOnStart = true;        // look for a newer release when the window opens
         public bool CloseOnPlay = true;         // close the launcher once the game has started
         public string GraphicsApi = Default;    // default (the player's own choice, D3D11), d3d11 or d3d12
+        public int AiThinking = 20;             // the AI's influence-map think time per frame in ms: 20 (retail) or 30
         public string ExtraArgs = "";           // passed to BattleTech.exe after the launcher's own
         public string PackKind = Launcher.PackBta;
         public string PackFolder = "";
@@ -51,6 +52,7 @@ namespace ReleaseGate
                         case "CheckOnStart": s.CheckOnStart = v != "0"; break;
                         case "CloseOnPlay": s.CloseOnPlay = v != "0"; break;
                         case "GraphicsApi": s.GraphicsApi = v == D3D11 || v == D3D12 ? v : Default; break;
+                        case "AiThinking": s.AiThinking = v == "30" ? 30 : 20; break;
                         case "ExtraArgs": s.ExtraArgs = v; break;
                         case "PackKind": s.PackKind = Launcher.PackKinds.Contains(v) ? v : Launcher.PackBta; break;
                         case "PackFolder": s.PackFolder = v; break;
@@ -72,6 +74,7 @@ namespace ReleaseGate
             b.Append("CheckOnStart=").Append(CheckOnStart ? "1" : "0").Append("\r\n");
             b.Append("CloseOnPlay=").Append(CloseOnPlay ? "1" : "0").Append("\r\n");
             b.Append("GraphicsApi=").Append(GraphicsApi).Append("\r\n");
+            b.Append("AiThinking=").Append(AiThinking).Append("\r\n");
             b.Append("ExtraArgs=").Append((ExtraArgs ?? "").Replace("\r", " ").Replace("\n", " ")).Append("\r\n");
             b.Append("PackKind=").Append(PackKind).Append("\r\n");
             b.Append("PackFolder=").Append(PackFolder).Append("\r\n");
@@ -175,6 +178,8 @@ namespace ReleaseGate
             if (s.GraphicsApi == LauncherSettings.D3D11) l.Add("-force-d3d11");
             // The build ships with graphics jobs off, so the default and D3D11 run as before; only this setting turns on split jobs (the maintainer, 2026-11-20).
             else if (s.GraphicsApi == LauncherSettings.D3D12) l.Add("-force-d3d12 -force-gfx-jobs split");
+            // The game reads ai-thinking=20 or 30 (BattleTech-Unity6 patch 226); anything else is 20 there too.
+            l.Add("-ai-thinking=" + (s.AiThinking == 30 ? 30 : 20));
             if (!string.IsNullOrWhiteSpace(s.ExtraArgs)) l.Add(s.ExtraArgs.Trim());
             return string.Join(" ", l);
         }

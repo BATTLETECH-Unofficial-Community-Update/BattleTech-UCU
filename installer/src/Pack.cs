@@ -593,9 +593,6 @@ namespace ReleaseGate
             {
 #endif
             File.Copy(setup, Path.Combine(output, "BattleTechUCUSetup.exe"));
-            // The itch app shows "play" as its main Launch button, so players start the installer from the itch app.
-            File.WriteAllText(Path.Combine(output, ".itch.toml"),
-                "[[actions]]\nname = \"play\"\npath = \"BattleTechUCUSetup.exe\"\n");
 #if UCU_MAC
             }
 #endif

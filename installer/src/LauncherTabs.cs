@@ -56,6 +56,7 @@ namespace ReleaseGate
 
         // Settings
         readonly ComboBox _api = new ComboBox { Name = "GraphicsApi", AccessibleName = "Graphics API", DropDownStyle = ComboBoxStyle.DropDownList, Width = 260 };
+        readonly ComboBox _aiThinking = new ComboBox { Name = "AiThinking", AccessibleName = "AI Thinking Time", DropDownStyle = ComboBoxStyle.DropDownList, Width = 260 };
         readonly TextBox _extraArgs = new TextBox { Name = "ExtraArgs", AccessibleName = "Extra launch options", Dock = DockStyle.Fill };
         readonly CheckBox _checkOnStart = new CheckBox { Name = "CheckOnStart", Text = "Check for a new release when the launcher opens", AutoSize = true };
         readonly CheckBox _closeOnPlay = new CheckBox { Name = "CloseOnPlay", Text = "Close the launcher when the game starts", AutoSize = true };
@@ -73,6 +74,7 @@ namespace ReleaseGate
         int _homeId;
         bool _loadingSettings;
 
+        static readonly int[] AiThinkingValues = { 20, 30 };
         static readonly string[] ApiValues = { LauncherSettings.Default, LauncherSettings.D3D11, LauncherSettings.D3D12 };
 
         TabControl BuildTabs(TableLayoutPanel install)
@@ -525,6 +527,9 @@ namespace ReleaseGate
             Span(t, new Label { Text = "Graphics API", AutoSize = true, Margin = new Padding(3, 0, 3, 3) });
             _api.Items.AddRange(new object[] { "Game default (DirectX 11)", "DirectX 11", "DirectX 12 with multi-core rendering" });
             Span(t, _api);
+            Span(t, new Label { Text = "AI Thinking Time", AutoSize = true, Margin = new Padding(3, 8, 3, 3) });
+            _aiThinking.Items.AddRange(new object[] { "20ms", "30ms" });
+            Span(t, _aiThinking);
             Span(t, new Label { Text = "Extra launch options, passed to BattleTech.exe (for example -screen-fullscreen 0)", AutoSize = true, MaximumSize = new Size(590, 0), Margin = new Padding(3, 8, 3, 3) });
             Span(t, _extraArgs);
             Span(t, _closeOnPlay);
@@ -534,6 +539,7 @@ namespace ReleaseGate
             Show(_settingsNote, "Settings are kept for this Windows user in " + LauncherSettings.FilePath + ". The game's own options (resolution, sound, controls) stay in its options menu.", SystemColors.ControlText);
 
             _api.SelectedIndexChanged += (s, e) => SettingsChanged();
+            _aiThinking.SelectedIndexChanged += (s, e) => SettingsChanged();
             _extraArgs.TextChanged += (s, e) => SettingsChanged();
             _closeOnPlay.CheckedChanged += (s, e) => SettingsChanged();
             _checkOnStart.CheckedChanged += (s, e) => SettingsChanged();
@@ -543,6 +549,7 @@ namespace ReleaseGate
         {
             if (_loadingSettings) return;
             _settings.GraphicsApi = ApiValues[Math.Max(0, _api.SelectedIndex)];
+            _settings.AiThinking = AiThinkingValues[Math.Max(0, _aiThinking.SelectedIndex)];
             _settings.ExtraArgs = _extraArgs.Text.Trim();
             _settings.CloseOnPlay = _closeOnPlay.Checked;
             _settings.CheckOnStart = _checkOnStart.Checked;
@@ -559,6 +566,7 @@ namespace ReleaseGate
         {
             _loadingSettings = true;
             _api.SelectedIndex = Math.Max(0, Array.IndexOf(ApiValues, _settings.GraphicsApi));
+            _aiThinking.SelectedIndex = Math.Max(0, Array.IndexOf(AiThinkingValues, _settings.AiThinking));
             _extraArgs.Text = _settings.ExtraArgs;
             _closeOnPlay.Checked = _settings.CloseOnPlay;
             _checkOnStart.Checked = _settings.CheckOnStart;

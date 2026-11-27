@@ -55,32 +55,32 @@ try {
     $d = (Invoke-RestMethod "$api/repos/T/data/releases?page=1" -Headers $h) | Where-Object { $_.tag_name -eq 'vT' }
     $m = (Invoke-RestMethod "$api/repos/T/main/releases?page=1" -Headers $h) | Where-Object { $_.tag_name -eq 'vT' }
     Case 'publish makes both public' ($r.Code -eq 0 -and $r.Out -match 'Release vT is public' -and -not $d.draft -and -not $m.draft) $r.Out
-    # Prune: 12 published releases in T/prune, each with two data parts, package.vault and the manifest; plus a draft with parts.
+    # Prune: 8 published releases in T/prune, each with two data parts, package.vault and the manifest; plus a draft with parts.
     function SeedPublished($repo, $tag, [string[]]$names, [string]$assetRoot = $assets) {
         $r = Invoke-RestMethod "$api/repos/$repo/releases" -Method Post -Headers $h -ContentType 'application/json' -Body (@{ tag_name = $tag; name = $tag; body = 'b'; draft = $false; prerelease = $false } | ConvertTo-Json)
         $up = $r.upload_url -replace '\{.*\}$', ''
         foreach ($n in $names) { Invoke-RestMethod "$up`?name=$n" -Method Post -Headers $h -ContentType 'application/octet-stream' -InFile (Join-Path $assetRoot $n) | Out-Null }
     }
-    foreach ($i in 1..12) { SeedPublished 'T/prune' ("p{0:D2}" -f $i) $all }
+    foreach ($i in 1..8) { SeedPublished 'T/prune' ("p{0:D2}" -f $i) $all }
     Seed 'T/prune' 'pDraft' $all
     $pc = @('--data-repo', 'T/prune', '--token', $token)
     $r = Run (@('prune') + $pc + @('--dry-run'))
     $rel = Invoke-RestMethod "$api/repos/T/prune/releases?page=1" -Headers $h
-    Case 'prune dry run removes nothing' ($r.Code -eq 0 -and $r.Out -match 'Would remove 4 data parts' -and $r.Out -match 'from 2 older releases' -and (($rel | ForEach-Object { $_.assets.Count } | Measure-Object -Sum).Sum -eq 13 * 6)) $r.Out
+    Case 'prune dry run removes nothing' ($r.Code -eq 0 -and $r.Out -match 'Would remove 4 data parts' -and $r.Out -match 'from 2 older releases' -and (($rel | ForEach-Object { $_.assets.Count } | Measure-Object -Sum).Sum -eq 9 * 6)) $r.Out
     $r = Run (@('prune') + $pc + @('--keep', '2'))
     Case 'prune refuses a keep below 3' ($r.Code -eq 1 -and $r.Out -match 'at least 3') $r.Out
     $r = Run (@('prune') + $pc)
     $rel = Invoke-RestMethod "$api/repos/T/prune/releases?page=1" -Headers $h
     $by = @{}; foreach ($x in $rel) { $by[$x.tag_name] = $x }
     $old = 'p01', 'p02' | ForEach-Object { $by[$_] }
-    $newer = 'p03', 'p12' | ForEach-Object { $by[$_] }
+    $newer = 'p03', 'p08' | ForEach-Object { $by[$_] }
     Case 'prune strips only the two oldest releases' ($r.Code -eq 0 -and $r.Out -match 'Removed 4 data parts' -and
         -not ($old | Where-Object { ($_.assets | Where-Object { $_.name -match '-data-\d+\.zip$' }) -or $_.assets.Count -ne 4 }) -and
         -not ($newer | Where-Object { $_.assets.Count -ne 6 }) -and $by['pDraft'].assets.Count -eq 6) $r.Out
     Case 'prune keeps vault and manifest and notes the removal' (($old | Where-Object { $_.body -match 'removed by housekeeping' -and ($_.assets.name -contains 'package.vault') -and ($_.assets.name -contains 'ucu-manifest.tsv') }).Count -eq 2 -and $by['p03'].body -eq 'b') ($old | ConvertTo-Json -Depth 4)
     $r = Run (@('prune') + $pc)
     Case 'prune is idempotent' ($r.Code -eq 0 -and $r.Out -match 'Removed 0 data parts') $r.Out
-    # publish prunes by itself: a 13th published release pushes p03 out of the window.
+    # publish prunes by itself: a 9th published release pushes p03 out of the window.
     Seed 'T/prune' 'pNew' $all; Seed 'T/prunemain' 'pNew' $main
     $r = Run (@('publish', '--repo', 'T/prunemain', '--data-repo', 'T/prune', '--token', $token, '--tag', 'pNew'))
     $by = @{}; foreach ($x in (Invoke-RestMethod "$api/repos/T/prune/releases?page=1" -Headers $h)) { $by[$x.tag_name] = $x }
@@ -109,7 +109,7 @@ try {
 
     $org = 'BATTLETECH-Unofficial-Community-Update'; $macRepo = "$org/BattleTech-UCU-mac-data"; $winRepo = "$org/BattleTech-UCU-data"; $publicRepo = "$org/BattleTech-UCU"
     $macDataNames = 'package-mac.vault', 'ucu-manifest-mac.tsv', 'BattleTechUCU-macR1-data-01.zip'
-    foreach ($i in 1..10) { SeedPublished $macRepo ("m{0:D2}" -f $i) $macDataNames $macAssets }
+    foreach ($i in 1..6) { SeedPublished $macRepo ("m{0:D2}" -f $i) $macDataNames $macAssets }
     foreach ($i in 1..11) { SeedPublished $winRepo ("w{0:D2}" -f $i) $all }
     SeedPublished $publicRepo 'wLatest' @('BattleTechUCUSetup.exe')
     $macCommon = @('--platform', 'mac', '--repo', $publicRepo, '--token', $token, '--master-secret', $master, '--tag', 'mac-v1', '--name', 'Mac v1', '--label', 'mac-v1')
@@ -139,7 +139,7 @@ try {
     $macOld = (Invoke-RestMethod "$api/repos/$macRepo/releases?page=1" -Headers $h) | Where-Object { $_.tag_name -eq 'm01' }
     $winOld = (Invoke-RestMethod "$api/repos/$winRepo/releases?page=1" -Headers $h) | Where-Object { $_.tag_name -eq 'w01' }
     Case 'Mac publish preserves prerelease and leaves Windows latest' ($r.Code -eq 0 -and -not $macD.draft -and -not $macM.draft -and $macM.prerelease -and $macM.make_latest -eq 'false' -and $latest.tag_name -eq 'wLatest') $r.Out
-    Case 'Mac publish prunes only mac-data at keep 10' ($r.Code -eq 0 -and $macOld.assets.Count -eq 2 -and $winOld.assets.Count -eq 6 -and $macD.assets.Count -eq 3) $r.Out
+    Case 'Mac publish prunes only mac-data at keep 6' ($r.Code -eq 0 -and $macOld.assets.Count -eq 2 -and $winOld.assets.Count -eq 6 -and $macD.assets.Count -eq 3) $r.Out
 
     $env:BTUCU_GITHUB_API = 'https://example.invalid/repos/'
     $r = Run (@('check') + $common + @('--tag', 'vT'))

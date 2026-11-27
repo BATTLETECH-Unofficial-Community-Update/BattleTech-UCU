@@ -296,11 +296,11 @@ namespace ReleaseGate
         }
 
         /// <summary>
-        /// Housekeeping (the maintainer, 2026-11-15: "auto-prune every 10 releases"): the data repository keeps the data parts of its newest
+        /// Housekeeping (the maintainer, 2026-11-15: "auto-prune every 10 releases"; lowered to 6 on 2026-11-26): the data repository keeps the data parts of its newest
         /// KeepDataReleases published releases. Each release is about 8.75 GiB and GitHub has no total cap, so this is tidiness,
         /// not a limit. Nothing here depends on older parts: the installer reads only the newest published release.
         /// </summary>
-        internal const int KeepDataReleases = 10;
+        internal const int KeepDataReleases = 6;
         const string PrunedNote = "Data parts of this release were removed by housekeeping";
 
         static bool IsDataPart(string name) { return Regex.IsMatch(name ?? "", @"-data-\d+\.zip$", RegexOptions.IgnoreCase); }

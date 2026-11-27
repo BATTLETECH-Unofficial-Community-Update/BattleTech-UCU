@@ -121,7 +121,7 @@ namespace ReleaseGate
                 PackLink link = Launcher.ReadLink(install);
                 sys.AppendLine("Mod pack: " + (link == null ? "none linked" : (link.Junction ? "linked to " : "copied from ") + link.Source));
             }
-            sys.AppendLine("Graphics API setting: " + settings.GraphicsApi + "; extra arguments: " + (settings.ExtraArgs ?? ""));
+            sys.AppendLine("Graphics API setting: " + settings.GraphicsApi + "; AI thinking: " + settings.AiThinking + " ms; extra arguments: " + (settings.ExtraArgs ?? ""));
             sys.AppendLine("Windows: " + Environment.OSVersion.VersionString + (Environment.Is64BitOperatingSystem ? " (64-bit)" : " (32-bit)"));
             sys.AppendLine("Processors: " + Environment.ProcessorCount + "; culture: " + System.Globalization.CultureInfo.CurrentCulture.Name);
             sys.AppendLine();

@@ -11,8 +11,8 @@
 //   verify  --assets <dir> --repo <owner/name> [--data-repo <owner/name>] --token <file> --tag <tag>
 //           every asset of both releases against the local file: name, size, GitHub's sha256 digest (all sizes)
 //   publish --repo <owner/name> [--data-repo <owner/name>] --token <file> --tag <tag> [--no-prune]
-//           also prunes: the data repository keeps the data parts of its newest 10 published releases (the maintainer, 2026-11-15)
-//   prune   [--data-repo <owner/name>] --token <file> [--keep 10] [--dry-run]
+//           also prunes: the data repository keeps the data parts of its newest 6 published releases (the maintainer, 2026-11-15; 10 until 2026-11-26)
+//   prune   [--data-repo <owner/name>] --token <file> [--keep 6] [--dry-run]
 // Tests point the API at a local stand-in with BTUCU_GITHUB_API=http://127.0.0.1:<port>/repos/ (test/github-standin.py).
 // The token is read from its file on every call and never printed. Exit 0 ok, 1 failed (nothing further was done).
 using System;

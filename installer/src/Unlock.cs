@@ -136,7 +136,7 @@ namespace ReleaseGate
             if (error == "steam-off") throw new UnlockException(string.IsNullOrEmpty(message) ? "Unlocking through Steam is switched off for now. Enter an access code instead." : message);
             if (error == "steam-down") throw new UnlockException("Steam couldn't be asked to confirm your copy right now. Try again later.");
 #if UCU_MAC
-            if (error == "mac") throw new UnlockException("The unlock server didn't accept this Mac install of BATTLETECH. It needs the Steam version, unmodified: verify the game's files in Steam and try again.");
+            if (error == "mac") throw new UnlockException("The unlock server didn't accept this Mac install of BATTLETECH. It needs the Steam or GOG version, unmodified: verify the game's files in Steam, or reinstall it from GOG, and try again.");
             if (error == "mac-off") throw new UnlockException(string.IsNullOrEmpty(message) ? "Unlocking is switched off for now. Try again later." : message);
             // A server from before the Mac route reads the request as a code and says it is badly formed.
             if (status == 400 && error == "bad-request") throw new UnlockException("The unlock server doesn't unlock Mac installs yet. Try again later, or download this tool again.");

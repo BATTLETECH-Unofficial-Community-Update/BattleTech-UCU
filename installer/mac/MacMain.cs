@@ -9,7 +9,8 @@
 //   ucu verify    --dest <folder>                                                checks every installed file against the install's manifest; no network
 //   ucu repair    --dest <folder> [--retail <folder>] [--remote [<source>]]      verify, then rewrites what differs
 // --remote reads a release online (default: Remote.DefaultSource, the macOS data repository); with no package beside the tool
-// it is the default. --retail defaults to the Steam library's BATTLETECH. Before the first write of an install or update the
+// it is the default. --retail defaults to the Steam library's BATTLETECH, else GOG's BATTLETECH folder in /Applications or
+// ~/Applications (Gate.FindGog). Before the first write of an install or update the
 // tool backs up BATTLETECH's Steam Cloud saves once (SaveBackup.cs) and stops if it can't.
 // Tests only: --unlock-url <url> (ask this server), --steam-root <folder> and --backup-root <folder> (SaveBackup.cs), --dry-run.
 // Exit codes are InstallResult's (0 installed, 1 failed, 2 BATTLETECH not found, 3 refused, 4 damaged, 5 cancelled), 64 for usage.
@@ -91,7 +92,7 @@ namespace ReleaseGate
         static int Install(string dest, string retail, string remote, bool dryRun)
         {
             retail = retail ?? Gate.FindRetail();
-            if (retail == null) return Fail("BATTLETECH wasn't found in your Steam libraries. Pass --retail <the folder that holds BattleTech.app>.", (int)InstallResult.NoRetail);
+            if (retail == null) return Fail("BATTLETECH wasn't found in your Steam libraries or in Applications (GOG). Pass --retail <the folder that holds BattleTech.app>.", (int)InstallResult.NoRetail);
             string inside = Installer.InsideRetail(dest, retail) ?? Installer.DestRefusal(dest, new Entry[0]);   // before any server is asked
             if (inside != null) return Fail(inside, (int)InstallResult.Failed);
             if (remote == null && !Installer.HasPackage) remote = Remote.DefaultSource;

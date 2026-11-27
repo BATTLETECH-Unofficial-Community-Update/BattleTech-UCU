@@ -83,6 +83,7 @@ namespace ReleaseGate
             Platform = platform;
             VaultName = platform == null ? "package.vault" : "package-mac.vault";
             PublicManifest.FileName = platform == null ? "ucu-manifest.tsv" : "ucu-manifest-mac.tsv";
+            PublicManifest.GogFileName = platform == null ? "ucu-manifest-gog.tsv" : "ucu-manifest-mac-gog.tsv";
         }
 
         /// <summary>A package of the other platform is refused here, before anything else is read and before any server is asked.</summary>
@@ -107,7 +108,19 @@ namespace ReleaseGate
         /// <summary>The store a retail install comes from: GOG when it carries GOG's game info file, otherwise Steam.</summary>
         public static string StoreOf(string retail)
         {
-            return File.Exists(Path.Combine(retail, "goggame-" + GogId + ".info")) ? Gog : Steam;
+            return File.Exists(Path.Combine(GogInfoDir(retail), "goggame-" + GogId + ".info")) ? Gog : Steam;
+        }
+
+        /// <summary>
+        /// Where an install keeps its goggame-*.info files: beside BattleTech.exe on Windows; on macOS, GOG's installer puts them in
+        /// its wrapper folder's Contents/Resources, beside BattleTech.app and outside its seal (mac-gog-s1, bytes-read 2026-11-26).
+        /// </summary>
+        public static string GogInfoDir(string root)
+        {
+#if UCU_MAC
+            if (Layout.Of(root) == Layout.Mac) return Path.Combine(root, "Contents", "Resources");
+#endif
+            return root;
         }
 
         /// <summary>
@@ -713,7 +726,14 @@ namespace ReleaseGate
         public static string FindGog()
         {
 #if UCU_MAC
-            return null;   // GOG's macOS build is not packaged yet
+            // GOG's macOS installer (and GOG Galaxy) puts the wrapper folder BATTLETECH, holding BattleTech.app and
+            // Contents/Resources/goggame-*.info, in /Applications or the user's own Applications folder (mac-gog-s1).
+            foreach (string apps in new[] { "/Applications", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Applications") })
+            {
+                string p = Path.Combine(apps, "BATTLETECH");
+                if (Directory.Exists(Path.Combine(p, "BattleTech.app")) && StoreOf(p) == Gog) return p;
+            }
+            return null;
 #else
             foreach (RegistryView view in new[] { RegistryView.Registry32, RegistryView.Registry64 })
                 try

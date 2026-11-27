@@ -11,7 +11,9 @@
 //                                           hash-install report and prints "parts n of 19, fingerprint equal: yes|no", never a digest
 //   macOS packages (the macOS build of this tool, UCU_MAC): a --player that holds BattleTech.app is packed with the --retail Mac
 //               install of the same layout, always locked (--master-secret and --unlock-url), as package-mac.vault (vault BTU6GAM4),
-//               ucu-manifest-mac.tsv and data/*.pak; no installer is copied. Never packs GOG. It takes its own content key,
+//               ucu-manifest-mac.tsv and data/*.pak; no installer is copied. --gog takes a GOG macOS install (the folder that
+//               holds BattleTech.app and Contents/Resources/goggame-*.info): its fingerprint slot and a GOG section that installs
+//               the player's own bytes wherever GOG's differ, with no Galaxy files; writes ucu-manifest-mac-gog.tsv. It takes its own content key,
 //               --mac-key <file> in place of --key (key separation): a file the packer makes, "mac:" and the hex; a Windows key
 //               file is refused, so the key that opens the Windows data is never the one a Mac owner's files-only unlock returns.
 //               [--previous <package folder>]   reuses that package's work: a file whose SHA-256 is unchanged keeps its pieces and its
@@ -357,13 +359,14 @@ namespace ReleaseGate
             if (Layout.Of(Path.GetFullPath(retail)) != lay)
                 throw new ArgumentException("The player is a " + lay.Name + " build but --retail is a " + Layout.Of(Path.GetFullPath(retail)).Name + " install: pack a player with the retail install of its own platform.");
             Gate.Use(lay.Platform);
-            if (lay.Platform != null && gog != null) throw new ArgumentException("--gog doesn't apply to a macOS package.");
+            if (lay.Platform != null && gog != null && Layout.Of(Path.GetFullPath(gog)) != lay)
+                throw new ArgumentException("--gog must be a GOG install of the player's own platform (" + lay.Name + "): " + gog);
             if (lay.Platform != null && (masterSecret == null || unlockUrl == null)) throw new ArgumentException("A macOS package is always locked: give --master-secret and --unlock-url.");
 #endif
             if (gog != null)
             {
                 gog = Path.GetFullPath(gog);
-                if (Gate.StoreOf(gog) != Gate.Gog) throw new ArgumentException("--gog must be a GOG install of BATTLETECH (it has no goggame-" + Gate.GogId + ".info): " + gog);
+                if (Gate.StoreOf(gog) != Gate.Gog) throw new ArgumentException("--gog must be a GOG install of BATTLETECH (it has no goggame-" + Gate.GogId + ".info in " + Gate.GogInfoDir(gog) + "): " + gog);
             }
             var clock = Stopwatch.StartNew();
             player = Path.GetFullPath(player);
@@ -586,7 +589,11 @@ namespace ReleaseGate
             byte[] manifest = PublicManifest.Write(rows);
 #endif
             File.WriteAllBytes(Path.Combine(output, PublicManifest.FileName), manifest);
+#if UCU_MAC
+            byte[] gogManifest = gogRows == null ? null : PublicManifest.Write(Listed(gogRows));   // the GOG manifest hides CodeResources too
+#else
             byte[] gogManifest = gogRows == null ? null : PublicManifest.Write(gogRows);
+#endif
             if (gogManifest != null) File.WriteAllBytes(Path.Combine(output, PublicManifest.GogFileName), gogManifest);
 #if UCU_MAC
             if (setup != null)
@@ -673,6 +680,20 @@ namespace ReleaseGate
         static readonly string[] GogNatives = { "Galaxy64.dll", "GalaxyCSharpGlue.dll" };
 
         /// <summary>
+        /// A macOS package's GOG section: GOG's Galaxy.bundle is Intel-only and the Mac player loads no Galaxy (D-20261126-4 B), so
+        /// no natives are added; and the installed app's seal (CodeResources) lists the player's own bytes, so a file whose GOG copy
+        /// differs is always installed from the player's bytes, never GOG's (gog-accept.tsv doesn't apply).
+        /// </summary>
+        static bool MacGog
+        {
+#if UCU_MAC
+            get { return Gate.Platform != null; }
+#else
+            get { return false; }
+#endif
+        }
+
+        /// <summary>
         /// Retail files whose GOG bytes are shown equivalent to Steam's for the player (gog-accept.tsv, embedded at build):
         /// "path|Steam SHA-512|GOG SHA-512". SHA-512 because this list is public source (PublicManifest.cs says why not SHA-256).
         /// </summary>
@@ -701,7 +722,7 @@ namespace ReleaseGate
             Func<string, string, List<RangePiece>, string, string> sealOnce, CancellationToken stop, ConcurrentDictionary<string, List<RangePiece>> gogRanged,
             PreviousPack previous, ConcurrentDictionary<string, string> gogReuse, out List<ManifestRow> gogRows, out string summary)
         {
-            HashSet<string> accept = GogAccept();
+            HashSet<string> accept = MacGog ? new HashSet<string>() : GogAccept();
             var section = new ConcurrentBag<Entry>();
             var newRows = new ConcurrentDictionary<string, ManifestRow>(StringComparer.OrdinalIgnoreCase);
             var byPath = entries.ToDictionary(e => e.Path, StringComparer.OrdinalIgnoreCase);
@@ -747,7 +768,8 @@ namespace ReleaseGate
                 Interlocked.Increment(ref ranged);
             });
             var list = section.ToList();
-            foreach (string n in GogNatives)
+            string[] natives = MacGog ? new string[0] : GogNatives;
+            foreach (string n in natives)
             {
                 string g = Path.Combine(gog, n), sha, sha512;
                 bool exec;
@@ -758,9 +780,9 @@ namespace ReleaseGate
                 newRows[n] = new ManifestRow { Path = n, Size = size, Sha512 = sha512, Origin = PublicManifest.Retail, Exec = exec };
             }
             gogRows = rows.Select(r => { ManifestRow x; return newRows.TryGetValue(r.Path, out x) ? x : r; })
-                .Concat(GogNatives.Where(n => !rows.Any(r => string.Equals(r.Path, n, StringComparison.OrdinalIgnoreCase))).Select(n => newRows[n])).ToList();
+                .Concat(natives.Where(n => !rows.Any(r => string.Equals(r.Path, n, StringComparison.OrdinalIgnoreCase))).Select(n => newRows[n])).ToList();
             summary = string.Format("{0} files copied from GOG's own differing copies, {1} ({2:F2} GiB) from Steam's bytes packed, {3} ranged files from GOG's own ranges, {4} Galaxy files",
-                own, packed, packedBytes / 1073741824.0, ranged, GogNatives.Length);
+                own, packed, packedBytes / 1073741824.0, ranged, natives.Length);
             return list.OrderBy(x => x.Path, StringComparer.Ordinal).ToList();
         }
 

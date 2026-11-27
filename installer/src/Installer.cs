@@ -763,7 +763,11 @@ namespace ReleaseGate
         static void WriteRecord(string dest, IDictionary<string, string[]> record)
         {
             string p = Path.Combine(dest, RecordName);
-            File.WriteAllLines(p + ".part", record.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase).Select(x => x.Key + "\t" + string.Join("\t", x.Value)));
+            // The Mac tool writes this while install threads still add rows: ConcurrentDictionary.ToArray is an atomic snapshot, where
+            // LINQ's copy reads Count first and throws when a row lands before the copy (mac-gog-1 install on barnabybox, 2026-11-27).
+            var cd = record as System.Collections.Concurrent.ConcurrentDictionary<string, string[]>;
+            KeyValuePair<string, string[]>[] rows = cd != null ? cd.ToArray() : record.ToArray();
+            File.WriteAllLines(p + ".part", rows.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase).Select(x => x.Key + "\t" + string.Join("\t", x.Value)));
 #if UCU_MAC
             File.Move(p + ".part", p, true);   // renamed over the old record: no moment without one, so a kill never leaves the folder disowned
 #else
@@ -1359,15 +1363,24 @@ namespace ReleaseGate
         /// "installs" are only these markers (gog-legs-1 G1: none, no DLC; G1b: copied, the DLC load). The user's own markers
         /// are copied from their GOG install on every install or repair, and a marker for a DLC no longer there is removed.
         /// The base game's goggame-1482783682.info is not copied, so Gate.StoreOf never takes the UCU folder for a GOG install.
-        /// Returns how many markers the folder now has.
+        /// macOS: the markers come from the GOG wrapper's Contents/Resources (Gate.GogInfoDir) and go beside BattleTech.app, outside
+        /// its seal. The Mac player loads no Galaxy (D-20261126-4 B), so the base game's file is copied too: beside the app it turns
+        /// on the player's GOG mode, and Gate.StoreOf, which reads a Mac folder's Contents/Resources, still takes the UCU folder for Steam.
+        /// Returns how many DLC markers the folder now has.
         /// </summary>
         public static int SyncGogDlcMarkers(string retail, string dest, out int removed)
         {
             removed = 0;
             var have = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string src in Directory.EnumerateFiles(retail, "goggame-*.info", SearchOption.TopDirectoryOnly))
+            string baseName = "goggame-" + Gate.GogId + ".info";
+#if UCU_MAC
+            bool copyBase = true;
+#else
+            bool copyBase = false;
+#endif
+            foreach (string src in Directory.EnumerateFiles(Gate.GogInfoDir(retail), "goggame-*.info", SearchOption.TopDirectoryOnly))
             {
-                if (GogDlcId(src) == null) continue;
+                if (GogDlcId(src) == null && !(copyBase && string.Equals(Path.GetFileName(src), baseName, StringComparison.OrdinalIgnoreCase))) continue;
                 string name = Path.GetFileName(src), dst = Path.Combine(dest, name);
                 have.Add(name);
                 byte[] bytes = File.ReadAllBytes(src);
@@ -1382,7 +1395,7 @@ namespace ReleaseGate
                     File.Delete(old);
                     removed++;
                 }
-            return have.Count;
+            return have.Count(n => !string.Equals(n, baseName, StringComparison.OrdinalIgnoreCase));
         }
 
         static void Pump(Stream from, Stream to, InstallProgress progress, CancellationToken stop)

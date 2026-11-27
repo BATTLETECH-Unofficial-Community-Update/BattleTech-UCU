@@ -30,6 +30,7 @@ namespace ReleaseGate
         const string DataRepoMac = "BATTLETECH-Unofficial-Community-Update/BattleTech-UCU-mac-data";
         const string MacVaultName = "package-mac.vault";
         const string MacManifestName = "ucu-manifest-mac.tsv";
+        const string MacGogManifestName = "ucu-manifest-mac-gog.tsv";   // PublicManifest.GogFileName under Gate.Use(Mac); only when packed with --gog
 
         static int Main(string[] a)
         {
@@ -115,6 +116,7 @@ namespace ReleaseGate
             Directory.CreateDirectory(outDir);
             File.Copy(Path.Combine(package, MacVaultName), Path.Combine(outDir, MacVaultName));
             File.Copy(Path.Combine(package, MacManifestName), Path.Combine(outDir, MacManifestName));
+            if (File.Exists(Path.Combine(package, MacGogManifestName))) File.Copy(Path.Combine(package, MacGogManifestName), Path.Combine(outDir, MacGogManifestName));
             File.Copy(arm64, Path.Combine(outDir, "ucu-macos-arm64"));
             File.Copy(x64, Path.Combine(outDir, "ucu-macos-intel"));
             List<string> parts = Volumes.WriteParts(package, outDir, label, partBytes, n => { }, CancellationToken.None);
@@ -248,7 +250,7 @@ namespace ReleaseGate
         static List<string> MainAssets(List<string> files, bool mac)
         {
             return files.Where(f => (mac
-                ? new[] { "ucu-macos-arm64", "ucu-macos-intel", MacManifestName }
+                ? new[] { "ucu-macos-arm64", "ucu-macos-intel", MacManifestName, MacGogManifestName }
                 : new[] { Remote.InstallerName, PublicManifest.FileName, PublicManifest.GogFileName, ManagerForm.VerifyScript })
                 .Contains(Path.GetFileName(f), StringComparer.OrdinalIgnoreCase)).ToList();
         }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.6-4B (BT-UCU Beta 4.6)
+
+- **AI thinking time per frame is configurable.** The launcher's Settings tab has a new choice, AI Thinking Time: 20ms (the default, retail setting) or 30ms. At 30ms, the AI plans its moves in fewer frames for more responsive play. In co-op the host's setting is the one that counts. Contributed by Brad Murray.
+
 ## 2.3.5-4B (BT-UCU Beta 4.5)
 
 - **In co-op, every player can Reserve again.** Reserve was hidden for everyone in co-op; it now moves only your own units in the current phase to the next one, as in the original game, and leaves your partner's units where they are.

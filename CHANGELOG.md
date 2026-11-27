@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.3.7-4B (BT-UCU Beta 4.7)
+
+- **A system owner's reputation is set to the value the game asks for.** The original game treated setting the owner's reputation as adding to it, so changing it from 80 to 50 stored 20. A save that holds a wrong value corrects itself the next time it loads or you arrive in a system. Contributed by @wyaeld.
+- **The AI no longer reads vehicles without a turret as having no hit points left.** The LRM and SRM Carriers and both Swiftwinds counted a turret they don't have, at 0, when the AI weighed an attack on them; the AI now skips the turret on a vehicle that has none, as the game's own destruction check does. Contributed by @wyaeld.
+- **Three checks no longer fail on data the original game doesn't ship:** the AI's check for a unit left exposed, the combat HUD's turn-order icons for an extra team, and the negotiation screen's priority salvage count, which now uses the same salvage setting as the contract's reward. The original game's data plays as before. Contributed by @wyaeld.
+- **Saving copies less data.** Each part of a save is written straight into one buffer of the right size instead of a growing one that is then copied. Contributed by @gkirkpatrick.
+- **macOS: the install tool no longer fails partway through a full install.** It saved its progress record while files were still being added, which could stop the install with an error.
+
 ## 2.3.6-4B (BT-UCU Beta 4.6)
 
 - **AI thinking time per frame is configurable.** The launcher's Settings tab has a new choice, AI Thinking Time: 20ms (the default, retail setting) or 30ms. At 30ms, the AI plans its moves in fewer frames for more responsive play. In co-op the host's setting is the one that counts. Contributed by @wyaeld.
@@ -503,6 +511,10 @@ Elsewhere:
 - Every quit logged a CRITICAL ERROR from analytics.
 - Each tree teardown leaked a culling group.
 - `Shop.Purchase` lowered stock before checking funds, so a buy the company couldn't pay for still used up the item.
+- The reputation with the local system owner was stored as if it were added to the last system's: 80 there and 50 here
+  stored 20, so events gated on friendly standing with the owner could be refused. It is now stored as it is.
+- The AI read 0 hit points for the LRM Carrier, SRM Carrier, Swiftwind and Armored Swiftwind, which have no turret, so it
+  rated them as nearly dead whatever their armour. It now reads their weakest real location.
 - A settings save made while another was still writing was refused, so the newer settings were lost. The newest one now waits
   its turn.
 - Quitting logged "has no receiver" for every object without a quit handler.

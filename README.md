@@ -35,7 +35,7 @@ This project is a personal, non-commercial effort and is not affiliated with Par
 
 **DOWNLOAD**: [releases.btucu.org](https://releases.btucu.org)
 
-**DISCORD**: [discord.btucu.org](https://discord.gg/awCprYVZJ)
+**DISCORD**: [https://discord.gg/EwjeK3WWdG](https://discord.gg/EwjeK3WWdG)
 
 **BUGS**: [issues.btucu.org](https://issues.btucu.org) (the Issues tab on our GitHub repository). Create an issue and select the 'Bug report' template, which will tell you where to find your logs. The launcher's *Tools* tab also has a *Collect bug report* button that zips the game's and your mods' logs into one file, ready to attach. For very large logs, use a Google Drive link.
 
@@ -44,11 +44,11 @@ This project is a personal, non-commercial effort and is not affiliated with Par
 ## Current Release
 
 <!-- release-version -->
-**Version 2.3.7-4B** (more simply: UCU Beta 4.7). ([Release Notes](CHANGELOG.md)). Version definitions have to stick to the retail numbering system, but we assign our own meaning to it:
+**Version 2.3.8-4B** (more simply: UCU Beta 4.8). ([Release Notes](CHANGELOG.md)). Version definitions have to stick to the retail numbering system, but we assign our own meaning to it:
 
 - **2**: Major release: 2.0 is defined as Unity 6-built feature parity with retail and its DLC along with bugfixes, optimizations, and the multiplayer changes below.
 - **3**: Minor release with new features or requirements, non-breaking changes backwards compatible within the major release line. A new minor release should indicate a significant fix or new feature.
-- **7**: Patchlevel: Bugfixes or minor corrections to the previous minor release.
+- **8**: Patchlevel: Bugfixes or minor corrections to the previous minor release.
 - **4B**: Simplified release indicator: (A)lpha/(B)eta/(R)elease and the number ('Beta 4' in this example)
 <!-- /release-version -->
 

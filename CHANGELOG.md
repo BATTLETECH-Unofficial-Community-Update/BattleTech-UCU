@@ -1,6 +1,20 @@
 # Changelog
 
+## 2.3.8-4B (BT-UCU Beta 4.8)
+
+Almost entirely co-op updates, including one that blocks other players from starting a turn while another player is mid-turn (e.g. if you move a unit but have not fired yet, no other player can move until you have ended that unit's turn).
+
+- **In co-op, only one unit at a time is in the middle of its turn.** One player's unit could move and fire while a teammate's unit had moved but not yet fired, which the single-player game never allows. While any unit on the shared team is mid-activation, the other players now wait and see "<player> is acting with <unit>".
+- **In co-op, guests return to the Argo with the host for a story scene that starts after a mission.** When the mission's own story milestone starts a conversation or cinematic on the Argo, as Story 2's RENT-TO-OWN does, the guests used to wait on the after-action screen while the host watched it; they now return to the Argo with the host and watch the scene with him.
+- **In co-op, a guest sees the course the host sets right away.** The guest used to get the new course, its Timeline entry and route, only when the Argo reached its first stop; now it shows as soon as the host sets it.
+- **In co-op, a guest's Timeline, finance panel, ship panel and time widget follow the host's clock.** While the host's clock ran, the guest kept the values from the last stop (the Financial Report and travel days, "In orbit" during a course, "Timeline PAUSED") until the host reached the next one; they now count down and change with the host.
+- **The Join Campaign screen tells a Steam or GOG player how friends join.** Friends join through the store's own invite or Join, which this list never shows; the screen now says so, and the Direct Address box says a SteamID works there.
+- **Every unit's turn-order icon shows in a modded encounter with more teams than the combat HUD has columns.** Empty placeholder teams no longer take columns, so every unit's turn-order icon shows. It is a fix to the original game, mostly reached with mods.
+
+
 ## 2.3.7-4B (BT-UCU Beta 4.7)
+
+Some retail bugfixes and an improvement to save write performance.
 
 - **A system owner's reputation is set to the value the game asks for.** The original game treated setting the owner's reputation as adding to it, so changing it from 80 to 50 stored 20. A save that holds a wrong value corrects itself the next time it loads or you arrive in a system. Contributed by @wyaeld.
 - **The AI no longer reads vehicles without a turret as having no hit points left.** The LRM and SRM Carriers and both Swiftwinds counted a turret they don't have, at 0, when the AI weighed an attack on them; the AI now skips the turret on a vehicle that has none, as the game's own destruction check does. Contributed by @wyaeld.
